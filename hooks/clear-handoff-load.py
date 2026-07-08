@@ -89,9 +89,12 @@ def main():
         f"'resume'/'go' — {recap_line}immediately continue from the handoff's Next "
         "steps: act on them, don't re-summarize the whole handoff back. Read any "
         "referenced files before acting. NOTE: any subagents listed in the handoff "
-        "belonged to the PREVIOUS session and are NOT reattachable after /clear — do "
-        "not SendMessage or TaskGet their old IDs; instead check the outputs the "
-        "handoff says they were producing (files, branches, PRs)."
+        "belonged to the PREVIOUS session. Their old Task IDs do NOT survive /clear "
+        "(SendMessage rejects session-qualified ids and `claude agents --json` is "
+        "empty), so don't drive them by id. A background subagent MAY still be alive "
+        "and reachable by its bare name via SendMessage, but don't depend on it — the "
+        "reply can lag minutes and it may have already exited. The reliable move is to "
+        "check the outputs the handoff says they were producing (files, branches, PRs)."
         f"\n\n--- HANDOFF ({handoff_path}) ---\n{handoff}"
     )
     print(json.dumps({
