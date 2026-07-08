@@ -62,10 +62,12 @@ def main():
     except Exception:
         sys.exit(0)
 
-    banner = f"📋 Handoff loaded ({age_str}) from {handoff_path} — resuming previous work."
+    banner = f"📋 Handoff loaded ({age_str}) from {handoff_path}. Say 'resume' to pick up where you left off."
     context = (
         f"A /clear-handoff (armed {age_str}) was pending for this directory and "
-        "has been auto-loaded below. Resume this work; read any referenced files "
+        "has been auto-loaded below. On the user's next message — even a bare "
+        "'resume'/'go' — immediately continue from the handoff's Next steps: act, "
+        "don't summarize the handoff back or re-orient. Read any referenced files "
         "before acting. NOTE: any subagents listed in the handoff belonged to the "
         "PREVIOUS session and are NOT reattachable after /clear — do not SendMessage "
         "or TaskGet their old IDs; instead check the outputs the handoff says they "
