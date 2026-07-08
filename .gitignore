@@ -1,0 +1,9 @@
+# Serena MCP tooling cache
+.serena/
+
+# Ephemeral handoffs (should never be committed)
+handoff-*.md
+
+# Python bytecode
+__pycache__/
+*.pyc
