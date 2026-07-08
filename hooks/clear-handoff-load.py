@@ -62,16 +62,37 @@ def main():
     except Exception:
         sys.exit(0)
 
-    banner = f"📋 Handoff loaded ({age_str}) from {handoff_path}. Say 'resume' to pick up where you left off."
+    # Pull the handoff's topic from its first markdown H1 (e.g.
+    # "# Handoff — resolve the double-fire") so the banner and the resume recap
+    # name the work, not just the file path. Strip a leading "Handoff —/-/:"
+    # prefix so the topic reads cleanly on its own.
+    topic = ""
+    for line in handoff.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            topic = stripped[2:].strip()
+            topic = re.sub(r"(?i)^handoff\s*[-—:]\s*", "", topic).strip()
+            break
+
+    topic_suffix = f": {topic}" if topic else ""
+    banner = (
+        f"📋 Handoff loaded ({age_str}){topic_suffix}. "
+        f"Say 'resume' to pick up where you left off.\n   {handoff_path}"
+    )
+    recap_line = (
+        f'open with a one-line recap naming what we were working on'
+        f'{f" ({topic})" if topic else ""} so the user has their bearings, then '
+    )
     context = (
         f"A /clear-handoff (armed {age_str}) was pending for this directory and "
         "has been auto-loaded below. On the user's next message — even a bare "
-        "'resume'/'go' — immediately continue from the handoff's Next steps: act, "
-        "don't summarize the handoff back or re-orient. Read any referenced files "
-        "before acting. NOTE: any subagents listed in the handoff belonged to the "
-        "PREVIOUS session and are NOT reattachable after /clear — do not SendMessage "
-        "or TaskGet their old IDs; instead check the outputs the handoff says they "
-        f"were producing (files, branches, PRs).\n\n--- HANDOFF ({handoff_path}) ---\n{handoff}"
+        f"'resume'/'go' — {recap_line}immediately continue from the handoff's Next "
+        "steps: act on them, don't re-summarize the whole handoff back. Read any "
+        "referenced files before acting. NOTE: any subagents listed in the handoff "
+        "belonged to the PREVIOUS session and are NOT reattachable after /clear — do "
+        "not SendMessage or TaskGet their old IDs; instead check the outputs the "
+        "handoff says they were producing (files, branches, PRs)."
+        f"\n\n--- HANDOFF ({handoff_path}) ---\n{handoff}"
     )
     print(json.dumps({
         "systemMessage": banner,
