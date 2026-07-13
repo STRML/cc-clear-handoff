@@ -8,7 +8,7 @@
     {
       "name": "cc-clear-handoff",
       "description": "A focused, un-loseable alternative to /compact: /clear-handoff saves a curated handoff and auto-loads it into the next session after /clear",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "source": "./",
       "author": {
         "name": "Samuel Reed"
