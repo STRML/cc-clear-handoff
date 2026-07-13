@@ -2,6 +2,7 @@
 .serena/
 
 # Ephemeral handoffs (should never be committed)
+.tmp/
 handoff-*.md
 
 # Python bytecode

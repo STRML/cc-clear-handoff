@@ -70,7 +70,7 @@ cd <dir> && git checkout <branch>   # HEAD was <short-sha>
 
 You **always** save the handoff to a file and arm the SessionStart auto-loader — never print the full block inline, never skip the file.
 
-1. **Resolve an absolute path in the cwd.** Compute the target as `"$(pwd)/handoff-$(date +%Y%m%d-%H%M%S).md"`. Never a bare/relative name and never a temp dir (`mktemp -t` lands in `$TMPDIR`, not the cwd — that's the bug this avoids). Capture the resolved value; you'll echo it back.
+1. **Resolve an absolute path under `.tmp/` in the cwd.** Compute the target as `"$(pwd)/.tmp/handoff-$(date +%Y%m%d-%H%M%S).md"`, and `mkdir -p "$(pwd)/.tmp"` first. Handoffs are ephemeral, single-use session state — `.tmp/` keeps them out of the repo root and (being gitignored) out of version control. Never a bare/relative name and never a system temp dir (`mktemp -t` lands in `$TMPDIR`, not the cwd — that's the bug this avoids). Capture the resolved value; you'll echo it back.
 2. **`Write` the handoff content to that absolute path.**
 3. **Arm the auto-loader.** Drop a sentinel so the `clear-handoff-load.py` SessionStart hook injects this handoff into the next session in this directory (and then deletes itself — single use). Run, substituting the real absolute handoff path:
    ```bash

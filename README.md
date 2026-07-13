@@ -21,7 +21,7 @@ The usual "context is getting long" options both hurt:
 1. gather live state (read-only):      SessionStart hook fires:
    TaskList, git branch/HEAD/status      • realpath(cwd) → find matching sentinel
 2. write curated handoff to             • inject handoff into context + banner
-   $(pwd)/handoff-<timestamp>.md         • delete sentinel (single-use)
+   $(pwd)/.tmp/handoff-<timestamp>.md    • delete sentinel (single-use)
 3. arm a sentinel keyed to the cwd     → you're resumed, automatically
    under ~/.claude/tmp/pending-handoffs
 4. print a 2-line fallback prompt
