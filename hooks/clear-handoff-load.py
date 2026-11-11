@@ -3,7 +3,7 @@
 
 /clear-handoff writes the handoff to a file in the cwd AND drops a sentinel at
 ~/.claude/tmp/pending-handoffs/<encoded-cwd>.path containing that file's absolute
-path. On the next `clear`/`startup` SessionStart in the SAME cwd, this hook finds
+path. On the next `clear`/`startup` SessionStart in that cwd or above it, this hook finds
 the sentinel, injects the handoff into context + shows a banner, then deletes the
 sentinel so it fires exactly once. Can't get lost across a /clear.
 """
@@ -14,6 +14,55 @@ import sys
 import time
 
 TTL_SECONDS = 24 * 3600  # stale sentinels expire — don't fire days later
+PENDING = os.path.expanduser("~/.claude/tmp/pending-handoffs")
+
+
+def encode(path):
+    return re.sub(r"[/.]", "-", path).strip("-")
+
+
+def read_sentinel(path):
+    try:
+        return open(path).read().strip(), os.path.getmtime(path)
+    except OSError:
+        return "", 0.0
+
+
+def live_sentinels():
+    """Every unexpired sentinel; expired ones are deleted on the way."""
+    try:
+        names = [n for n in os.listdir(PENDING) if n.endswith(".path")]
+    except OSError:
+        return []
+    live = []
+    for name in names:
+        path = os.path.join(PENDING, name)
+        handoff, armed_at = read_sentinel(path)
+        if time.time() - armed_at > TTL_SECONDS:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            continue
+        live.append((armed_at, path, handoff))
+    return live
+
+
+def find_sentinel(cwd):
+    """The sentinel armed in cwd, else the newest one armed below it.
+
+    The arm step keys on the shell's cwd at arm time, which drifts into
+    subdirectories and worktrees (<repo>/.claude/worktrees/<name>) while the
+    next session starts in the launch dir. The handoff file lives under the
+    arm cwd, so its path says where it was armed.
+    """
+    live = live_sentinels()
+    exact = os.path.join(PENDING, f"{encode(cwd)}.path")
+    if any(path == exact for _, path, _ in live):
+        return exact
+    below = [(armed_at, path) for armed_at, path, handoff in live
+             if os.path.realpath(handoff).startswith(cwd.rstrip("/") + "/")]
+    return max(below)[1] if below else None
 
 def main():
     try:
@@ -29,21 +78,13 @@ def main():
 
     # realpath BOTH sides: os.getcwd() (used to arm) is physical, but the
     # SessionStart payload's cwd is often the logical/symlinked launch path.
-    # Without this they mismatch under /tmp, iCloud/OneDrive, symlinked repos.
     cwd = os.path.realpath(data.get("cwd") or os.getcwd())
-    encoded = re.sub(r"[/.]", "-", cwd).strip("-")
-    sentinel = os.path.expanduser(
-        f"~/.claude/tmp/pending-handoffs/{encoded}.path"
-    )
-    if not os.path.isfile(sentinel):
+    sentinel = find_sentinel(cwd)
+    if not sentinel:
         sys.exit(0)  # nothing pending for this directory
 
     # Single-use: remove the sentinel now, whatever happens next.
-    try:
-        handoff_path = open(sentinel).read().strip()
-        armed_at = os.path.getmtime(sentinel)
-    except Exception:
-        handoff_path, armed_at = "", 0.0
+    handoff_path, armed_at = read_sentinel(sentinel)
     try:
         os.remove(sentinel)
     except OSError:
