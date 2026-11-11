@@ -68,17 +68,14 @@ def find_sentinel(cwd):
     repo (say ~) only takes a sentinel armed in exactly that dir.
     """
     exact = os.path.join(PENDING, f"{encode(cwd)}.path")
-    repo = None
-    picks = []
-    for armed_at, path, handoff in live_sentinels():
-        if path == exact:
-            picks.append((armed_at, path))
-            continue
-        if not os.path.realpath(handoff).startswith(cwd.rstrip("/") + "/"):
-            continue
-        repo = repo or git_common_dir(cwd) or ""
-        if repo and git_common_dir(os.path.dirname(handoff)) == repo:
-            picks.append((armed_at, path))
+    live = live_sentinels()
+    picks = [(armed_at, path) for armed_at, path, _ in live if path == exact]
+    below = [(armed_at, path, handoff) for armed_at, path, handoff in live
+             if path != exact and os.path.realpath(handoff).startswith(cwd.rstrip("/") + "/")]
+    repo = git_common_dir(cwd) if below else None
+    if repo:
+        picks += [(armed_at, path) for armed_at, path, handoff in below
+                  if git_common_dir(os.path.dirname(handoff)) == repo]
     return max(picks)[1] if picks else None
 
 
