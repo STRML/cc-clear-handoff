@@ -16,6 +16,11 @@ class HookTest(unittest.TestCase):
         os.makedirs(self.pending)
         self.repo = os.path.join(self.home, "repo")
         self.worktree = os.path.join(self.repo, ".claude", "worktrees", "feature-x")
+        os.makedirs(self.repo)
+        git = lambda *a: subprocess.run(["git", "-C", self.repo, *a], check=True, capture_output=True)
+        git("init", "-q")
+        git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "init")
+        git("worktree", "add", "-q", self.worktree)
 
     def arm(self, armed_in, name="feature-x-work.md", age=0):
         os.makedirs(os.path.join(armed_in, ".tmp"), exist_ok=True)
@@ -68,6 +73,17 @@ class HookTest(unittest.TestCase):
         _, stale = self.arm(os.path.join(self.home, "other-repo"), age=2 * 86400)
         self.assertIsNone(self.run_hook(self.repo))
         self.assertFalse(os.path.exists(stale))
+
+    def test_launch_above_the_repo_does_not_load(self):
+        _, sentinel = self.arm(self.repo)
+        self.assertIsNone(self.run_hook(self.home))
+        self.assertTrue(os.path.exists(sentinel))
+
+    def test_newer_worktree_handoff_beats_older_exact(self):
+        self.arm(self.repo, "older.md", age=3600)
+        newer, _ = self.arm(self.worktree, "newer.md")
+        out = self.run_hook(self.repo)
+        self.assertIn(newer, out["hookSpecificOutput"]["additionalContext"])
 
     def test_compact_does_not_consume(self):
         _, sentinel = self.arm(self.repo)

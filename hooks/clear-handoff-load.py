@@ -3,13 +3,14 @@
 
 /clear-handoff writes the handoff to a file in the cwd AND drops a sentinel at
 ~/.claude/tmp/pending-handoffs/<encoded-cwd>.path containing that file's absolute
-path. On the next `clear`/`startup` SessionStart in that cwd or above it, this hook finds
+path. On the next `clear`/`startup` SessionStart in that cwd, or above it in the same git repo, this hook finds
 the sentinel, injects the handoff into context + shows a banner, then deletes the
 sentinel so it fires exactly once. Can't get lost across a /clear.
 """
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -48,21 +49,38 @@ def live_sentinels():
     return live
 
 
+def git_common_dir(path):
+    try:
+        out = subprocess.run(["git", "-C", path, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                             capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return os.path.realpath(out.stdout.strip()) if out.returncode == 0 and out.stdout.strip() else None
+
+
 def find_sentinel(cwd):
-    """The sentinel armed in cwd, else the newest one armed below it.
+    """The newest sentinel armed in cwd, or below it in the same git repo.
 
     The arm step keys on the shell's cwd at arm time, which drifts into
     subdirectories and worktrees (<repo>/.claude/worktrees/<name>) while the
     next session starts in the launch dir. The handoff file lives under the
-    arm cwd, so its path says where it was armed.
+    arm cwd, so its path says where it was armed. A launch dir outside any
+    repo (say ~) only takes a sentinel armed in exactly that dir.
     """
-    live = live_sentinels()
     exact = os.path.join(PENDING, f"{encode(cwd)}.path")
-    if any(path == exact for _, path, _ in live):
-        return exact
-    below = [(armed_at, path) for armed_at, path, handoff in live
-             if os.path.realpath(handoff).startswith(cwd.rstrip("/") + "/")]
-    return max(below)[1] if below else None
+    repo = None
+    picks = []
+    for armed_at, path, handoff in live_sentinels():
+        if path == exact:
+            picks.append((armed_at, path))
+            continue
+        if not os.path.realpath(handoff).startswith(cwd.rstrip("/") + "/"):
+            continue
+        repo = repo or git_common_dir(cwd) or ""
+        if repo and git_common_dir(os.path.dirname(handoff)) == repo:
+            picks.append((armed_at, path))
+    return max(picks)[1] if picks else None
+
 
 def main():
     try:
@@ -94,8 +112,6 @@ def main():
         sys.exit(0)
 
     age = time.time() - armed_at
-    if age > TTL_SECONDS:
-        sys.exit(0)  # stale — expired, don't inject wrong "resuming" context
     age_str = f"{int(age // 3600)}h ago" if age >= 3600 else f"{int(age // 60)}m ago"
 
     try:

@@ -79,7 +79,7 @@ You **always** save the handoff to a file and arm the SessionStart auto-loader �
    mkdir -p ~/.claude/tmp/pending-handoffs
    printf '%s' "$HF" > ~/.claude/tmp/pending-handoffs/$ENC.path
    ```
-   The hook only consumes this on a `clear`/`startup` SessionStart in the directory you armed it in or any parent of it (so a shell that drifted into a subdirectory or worktree still hands off to the launch dir), and it expires after 24h — so arm it right before you `/clear`, not hours ahead.
+   The hook only consumes this on a `clear`/`startup` SessionStart in the directory you armed it in, or in a parent of it inside the same git repo (so a shell that drifted into a subdirectory or `.claude/worktrees/<name>` still hands off to the launch dir), and it expires after 24h — so arm it right before you `/clear`, not hours ahead.
 
 Then print **only a very short prompt** — nothing else, no inline dump. Exactly:
 
