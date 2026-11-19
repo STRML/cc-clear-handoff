@@ -23,7 +23,7 @@ function world(on: On, opts: { box?: string } = {}) {
     sentinelMtime: NOW + 1,
     sentinelMissing: false,
   }
-  const refuse = { plugin: undefined as string | undefined }
+  const refuse = { plugin: undefined as string | undefined, person: undefined as string | undefined }
   const clear = { rejects: false }
   const box = { fills: true }
   const clock = mock.clock(on, { now: NOW })
@@ -41,9 +41,13 @@ function world(on: On, opts: { box?: string } = {}) {
         : { kind: 'file', size: disk.handoffSize, mtimeMs: NOW + 1, isLink: false },
     }
   }) as never
-  on('fs.read', () => {
-    if (disk.sentinelMissing) throw new Error('ENOENT')
-    return { value: disk.sentinelText }
+  on('fs.read', (_, e) => {
+    if ((e as { path: string }).path === SENTINEL) {
+      if (disk.sentinelMissing) throw new Error('ENOENT')
+      return { value: disk.sentinelText }
+    }
+    if (disk.handoffMissing) throw new Error('ENOENT')
+    return { value: disk.handoffSize > 0 ? '# Handoff' : '' }
   }) as never
   on('prompt.read', () => ({ value: { text: opts.box ?? '', cursor: 0 } }))
   on('prompt.fill', (_, e) => {
@@ -65,6 +69,7 @@ function world(on: On, opts: { box?: string } = {}) {
       if (refuse.plugin) return { drop: refuse.plugin }
       submitted.push(e.text)
     }
+    if (e.origin.kind === 'composer' && refuse.person) return { drop: refuse.person }
     return { text: e.text }
   })
   on('command.run', (_, e) => {
@@ -89,7 +94,7 @@ const ended = (reason: 'answer' | 'aborted' | 'error' | 'refusal' = 'answer', tu
     ...(agentId ? { agentId } : {}),
   }) as never
 
-const handoffCommand = (name = 'cc-clear-handoff:clear-handoff') => ({
+const handoffCommand = (name = 'clear-handoff') => ({
   text: `/${name} build it`,
   wait: false,
   origin: { kind: 'composer' as const },
@@ -175,7 +180,7 @@ test('A2b: /clear-handoff with no Write this turn does not clear, and says so', 
   await $.turn.complete(ended())
   await settle(w)
   expect(w.ran).toEqual([])
-  expect(w.toasts.some(t => t.includes('nothing will auto-clear'))).toBe(true)
+  expect(w.toasts.some(t => t.includes('Run /clear-handoff again'))).toBe(true)
 })
 
 for (const how of ['fails', 'denied'] as const) {
@@ -506,4 +511,64 @@ test('25: a rejected /clear toasts, and a later handoff turn still works', async
   await $.turn.complete(ended('answer', 't2'))
   await settle(w)
   expect(w.ran).toEqual(['clear'])
+})
+
+// Round 5
+
+test('R5-3: another plugin\'s /x:handoff never authorizes a clear', async ($, on) => {
+  const w = world(on)
+  await $.prompt.submit(handoffCommand('other-plugin:handoff'))
+  await $.turn.start({ text: '/other-plugin:handoff', turnId: 't1' })
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('R5-4: a dropped /clear-handoff does not arm the next turn', async ($, on) => {
+  const w = world(on)
+  w.refuse.person = 'blocked'
+  await $.prompt.submit(handoffCommand())
+  w.refuse.person = undefined
+  await $.prompt.submit(person())
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('R5-6: a draft in the fresh session box stops the resume prompt', async ($, on) => {
+  const w = world(on, { box: 'half-typed thought' })
+  await launched($, w)
+  expect(w.ran).toEqual(['clear'])
+  expect(w.submitted).toEqual([])
+  expect(w.toasts.some(t => t.includes('you have a draft'))).toBe(true)
+})
+
+test('R5-9: a sentinel older than the loader TTL does not clear', async ($, on) => {
+  const w = world(on)
+  await handoffTurn($)
+  await w.clock.advance(25 * 60 * 60 * 1000)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('R5-10: a sentinel mtime rounded down to the second still counts', async ($, on) => {
+  const w = world(on)
+  w.disk.sentinelMtime = NOW - 500
+  await handoffTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual(['clear'])
+})
+
+test('R5-8: a handoff Write in a turn whose start the mod never saw says to clear by hand', async ($, on) => {
+  const w = world(on)
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+  expect(w.toasts.some(t => t.includes('reloaded mid-turn'))).toBe(true)
 })

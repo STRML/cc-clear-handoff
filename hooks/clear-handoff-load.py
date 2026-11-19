@@ -18,6 +18,17 @@ TTL_SECONDS = 24 * 3600  # stale sentinels expire — don't fire days later
 PENDING = os.path.expanduser("~/.claude/tmp/pending-handoffs")
 
 
+def first_h2(text):
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+        elif not in_fence and stripped.startswith("## "):
+            return stripped
+    return None
+
+
 def encode(path):
     return re.sub(r"[/.]", "-", path).strip("-")
 
@@ -137,7 +148,7 @@ def main():
         f'open with a one-line recap naming what we were working on'
         f'{f" ({topic})" if topic else ""} so the user has their bearings, then '
     )
-    has_directive = any(line.strip() == "## Directive" for line in handoff.splitlines())
+    has_directive = first_h2(handoff) == "## Directive"
     first_move = (
         "carry out its ## Directive first (the user's own instruction for this "
         "session), then continue from its Next steps"
