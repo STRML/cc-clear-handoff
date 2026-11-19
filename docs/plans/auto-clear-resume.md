@@ -68,8 +68,9 @@ not a silent gate.
 
 ## Cancellation rules
 
-Only a person cancels: a `prompt.submit` whose origin is `composer` or `bridge`, or a person's
-`/clear`. A `task-notification` or other non-person prompt never cancels by itself; if it starts a
+Only the owner cancels: a `prompt.submit` whose origin is `composer`, `bridge`, `sdk`, `slack-ping`,
+or `channel`, or such a person's `/clear`. The arm also requires the handoff file to exist and be
+non-empty (`$.fs.stat`), so a failed Write never triggers a `/clear` (review round 1, P1). A `task-notification` or other non-person prompt never cancels by itself; if it starts a
 new main-loop turn while our `/clear` is queued, `turn.start` aborts the launch.
 
 - A person's prompt while armed disarms, whatever turn it names.

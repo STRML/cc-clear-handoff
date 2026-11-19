@@ -13,7 +13,9 @@ const ARMED_MARKER = 'clear-handoff armed: '
 const ARM_STEP = 'pending-handoffs'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
 const CANCELLED = 'clear-handoff: you sent a prompt, so not clearing. Run /clear when ready; the handoff still loads.'
-const BY_HAND = 'clear-handoff: loaded mid-turn, so not auto-clearing. Run /clear by hand; the handoff still loads.'
+const BY_HAND = 'clear-handoff: not auto-clearing. Run /clear by hand; the handoff still loads.'
+// Origins that carry the session owner's own words.
+const PERSON_KINDS = new Set(['composer', 'bridge', 'sdk', 'slack-ping', 'channel'])
 
 type Api = Parameters<Hook<'session.start'>>[0]
 type Origin = { kind: string; name?: string }
@@ -30,11 +32,19 @@ let pendingStart: string | undefined
 function armedPathFrom(text: string | undefined): string | undefined {
   const lines = (text ?? '').split('\n').filter(l => l.startsWith(ARMED_MARKER))
   const path = lines.at(-1)?.slice(ARMED_MARKER.length).trim()
-  return path?.startsWith('/') ? path : undefined
+  return path?.startsWith('/') && path.endsWith('.md') ? path : undefined
+}
+
+async function isHandoffFile($: Api, path: string): Promise<boolean> {
+  try {
+    const stat = await $.fs.stat(path)
+    return stat.kind === 'file' && stat.size > 0
+  } catch {
+    return false
+  }
 }
 
 const resumeMessage = (path: string) => `Resume from ${path}`
-const PERSON_KINDS = new Set(['composer', 'bridge', 'sdk'])
 const isPerson = (origin: Origin) => PERSON_KINDS.has(origin.kind)
 const isOurs = ($: Api, origin: Origin) => origin.kind === 'plugin' && origin.name === $.plugin.name
 
@@ -76,12 +86,12 @@ function launch($: Api, path: string): void {
 
 async function offerResume($: Api, text: string, reason: string): Promise<void> {
   const box = await $.prompt.read()
-  if (box.text.trim() !== '') {
-    $.ui.toast(`clear-handoff: could not send "${text}" (${reason}). Send it when ready.`)
-    return
-  }
-  await $.prompt.fill({ text })
-  $.ui.toast(`clear-handoff: could not start the resume (${reason}). Press Enter to send it.`)
+  const filled = box.text.trim() === '' && (await $.prompt.fill({ text })).isFilled
+  $.ui.toast(
+    filled
+      ? `clear-handoff: could not start the resume (${reason}). Press Enter to send it.`
+      : `clear-handoff: could not send "${text}" (${reason}). Send it when ready.`,
+  )
 }
 
 async function startResume($: Api): Promise<void> {
@@ -115,7 +125,7 @@ export const register: Register = on => {
     if (e.agentId || !e.command.includes(ARM_STEP)) return ran
     const failed = ran.deny !== undefined || ran.isError === true
     const path = failed ? undefined : armedPathFrom(ran.text)
-    if (!path) {
+    if (!path || !(await isHandoffFile($, path))) {
       if (armedPath && !inFlight) {
         disarm()
         $.ui.toast('clear-handoff: arming failed, so nothing will auto-clear.')
@@ -123,12 +133,12 @@ export const register: Register = on => {
       return ran
     }
     if (currentTurn === undefined) {
-      $.ui.toast(BY_HAND)
+      $.ui.toast(`clear-handoff: loaded mid-turn. ${BY_HAND}`)
       return ran
     }
     armedPath = path
     armedTurn = currentTurn
-    $.ui.toast('Handoff armed. When this turn ends: /clear, then resume. Type or press Esc to cancel.')
+    $.ui.toast('Handoff armed. This session clears when the turn ends. Send a prompt or press Esc before then to stop it.')
     return ran
   })
 
@@ -138,7 +148,6 @@ export const register: Register = on => {
   })
 
   on('turn.start', ($, e, next) => {
-    if (e.agentId) return next(e)
     currentTurn = e.turnId
     if (armedPath && armedTurn !== e.turnId) disarm()
     if (inFlight) abortLaunch = true
@@ -147,8 +156,13 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const out = await next(e)
-    if (e.agentId || !armedPath || e.turnId !== armedTurn || inFlight) return out
+    if (e.agentId || !armedPath || e.turnId !== armedTurn) return out
     const path = armedPath
+    if (inFlight) {
+      disarm()
+      $.ui.toast(`clear-handoff: an earlier clear is still queued. ${BY_HAND}`)
+      return out
+    }
     if (e.reason !== 'answer') {
       disarm()
       $.ui.toast(`clear-handoff: turn ended (${e.reason}), so not clearing. Run /clear when ready.`)
@@ -158,6 +172,8 @@ export const register: Register = on => {
     return out
   })
 
+  // Our own queued /clear checks abortLaunch alone: a person's /clear may have
+  // already run and reset `launching`.
   on('command.run', { command: 'clear' }, async ($, e, next) => {
     if (isPerson(e.origin)) {
       disarm()
@@ -167,7 +183,7 @@ export const register: Register = on => {
       return next(e)
     }
     if (isOurs($, e.origin)) {
-      if (launching && abortLaunch) {
+      if (abortLaunch) {
         launching = undefined
         $.ui.toast(CANCELLED)
         return { text: '' }
@@ -187,7 +203,10 @@ export const register: Register = on => {
     }
     const { path, at } = launching
     launching = undefined
-    if ((await $.clock.now()) - at > LAUNCH_WINDOW_MS) return out
+    if ((await $.clock.now()) - at > LAUNCH_WINDOW_MS) {
+      $.ui.toast(`clear-handoff: the clear took too long, so the resume prompt was not sent. Paste: Resume from ${path}`)
+      return out
+    }
     if (abortLaunch) {
       $.ui.toast('clear-handoff: a prompt came in during the clear, so the resume prompt was not sent.')
       return out
@@ -195,7 +214,9 @@ export const register: Register = on => {
     pendingStart = resumeMessage(path)
     // initialUserMessage does not start a turn after /clear; submit once idle.
     $.clock.after(0, () => {
-      startResume($).catch(() => {})
+      startResume($).catch(err =>
+        $.ui.toast(`clear-handoff: resume failed (${String(err)}). Paste: Resume from ${path}`),
+      )
     })
     return out
   })

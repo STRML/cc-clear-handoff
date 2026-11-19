@@ -12,22 +12,33 @@ function world(on: On, opts: { box?: string } = {}) {
   const filled: string[] = []
   const submitted: string[] = []
   const toasts: string[] = []
-  const bash = { out: `clear-handoff armed: ${PATH}\n`, fails: false }
+  const bash = { out: `clear-handoff armed: ${PATH}\n`, fails: false, denied: false }
   const refuse = { plugin: undefined as string | undefined }
   const clear = { rejects: false }
+  const files = { missing: false }
+  const box = { fills: true }
   const clock = mock.clock(on, { now: 1_000_000 })
   on('session.id', () => ({ value: 'plan-1' }))
   on('prompt.read', () => ({ value: { text: opts.box ?? '', cursor: 0 } }))
   on('prompt.fill', (_, e) => {
+    if (!box.fills) return { isFilled: false }
     filled.push(e.text)
     return { isFilled: true }
   })
+  on('fs.stat', () => {
+    if (files.missing) throw new Error('ENOENT')
+    return { value: { kind: 'file', size: 900, mtimeMs: 0, isLink: false, resolve: false } }
+  }) as never
   on('ui.toast', (_, e) => {
     toasts.push(String((e as { text?: string }).text ?? e))
     return { value: undefined }
   })
   on('tool.call', () =>
-    bash.fails ? { result: {}, text: 'permission denied', isError: true } : { result: {}, text: bash.out },
+    bash.denied
+      ? { deny: 'not allowed' }
+      : bash.fails
+        ? { result: {}, text: 'permission denied', isError: true }
+        : { result: {}, text: bash.out },
   )
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('prompt.submit', (_, e) => {
@@ -44,7 +55,7 @@ function world(on: On, opts: { box?: string } = {}) {
   })
   on('classic.SessionStart', () => ({}))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  return { ran, filled, submitted, toasts, bash, refuse, clear, clock }
+  return { ran, filled, submitted, toasts, bash, refuse, clear, files, box, clock }
 }
 
 type W = ReturnType<typeof world>
@@ -71,6 +82,8 @@ const notification = (turnId?: string) => ({
   origin: { kind: 'task-notification' as const },
   ...(turnId ? { turnId } : {}),
 })
+
+const slackPing = () => ({ text: 'stop', wait: false, origin: { kind: 'slack-ping' as const } })
 
 const typedClear = { command: 'clear', args: '', origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 120 } }
 const otherPluginClear = { command: 'clear', args: '', origin: { kind: 'plugin' as const, name: 'someone-else' }, presentation: { isFullscreen: false, columns: 120 } }
@@ -106,9 +119,29 @@ test('1: armed turn ends with an answer: one /clear, then Resume from <path>', a
   expect(w.submitted).toEqual([`Resume from ${PATH}`])
 })
 
-test('2: a failed or denied arm arms nothing', async ($, on) => {
+for (const how of ['fails', 'denied'] as const) {
+  test(`2: an arm that ${how} arms nothing`, async ($, on) => {
+    const w = world(on)
+    w.bash[how] = true
+    await armedTurn($)
+    await $.turn.complete(ended())
+    await settle(w)
+    expect(w.ran).toEqual([])
+  })
+}
+
+test('2b: a marker naming a handoff file that does not exist arms nothing', async ($, on) => {
   const w = world(on)
-  w.bash.fails = true
+  w.files.missing = true
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('2c: a marker path that is not a .md file arms nothing', async ($, on) => {
+  const w = world(on)
+  w.bash.out = 'clear-handoff armed: /x then do Y\n'
   await armedTurn($)
   await $.turn.complete(ended())
   await settle(w)
@@ -177,6 +210,7 @@ for (const reason of ['aborted', 'error', 'refusal'] as const) {
     await $.turn.complete(ended(reason))
     await settle(w)
     expect(w.ran).toEqual([])
+    expect(w.toasts.some(t => t.includes('Run /clear when ready'))).toBe(true)
   })
 }
 
@@ -198,6 +232,15 @@ test('12: a task notification during the armed turn does not cancel', async ($, 
   await $.turn.complete(ended())
   await settle(w)
   expect(w.ran).toEqual(['clear'])
+})
+
+test('12b: an owner Slack ping during the armed turn cancels', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.prompt.submit(slackPing())
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
 })
 
 test('13: a person prompt after the turn, before the /clear runs, drops it', async ($, on) => {
@@ -239,6 +282,18 @@ test("16: a person's /clear while the launch is in flight runs exactly one /clea
   await settle(w)
   expect(w.ran).toEqual(['clear'])
   expect(w.submitted).toEqual([])
+})
+
+test('16c: a second armed turn while a clear is still queued says to clear by hand', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await $.turn.start({ text: '/clear-handoff', turnId: 't2' })
+  await arm($)
+  await $.turn.complete(ended('answer', 't2'))
+  expect(w.toasts.some(t => t.includes('earlier clear is still queued'))).toBe(true)
+  await settle(w)
+  expect(w.ran).toEqual([])
 })
 
 test("17: another plugin's /clear while ours is queued does not take our SessionStart", async ($, on) => {
@@ -288,6 +343,7 @@ test('20: a SessionStart over 2 minutes late does not submit', async ($, on) => 
   await opened($)
   await settle(w)
   expect(w.submitted).toEqual([])
+  expect(w.toasts.some(t => t.includes(`Paste: Resume from ${PATH}`))).toBe(true)
 })
 
 test('21: a person typing first in the fresh session skips our submit', async ($, on) => {
@@ -328,6 +384,15 @@ test('24: a refused submit with text in the box leaves it and names the prompt',
   expect(w.toasts.some(t => t.includes(`Resume from ${PATH}`))).toBe(true)
 })
 
+test('24b: a refused submit where the box cannot take text does not say press Enter', async ($, on) => {
+  const w = world(on)
+  w.refuse.plugin = 'a Stop stands'
+  w.box.fills = false
+  await launched($, w)
+  expect(w.toasts.some(t => t.includes('Enter'))).toBe(false)
+  expect(w.toasts.some(t => t.includes(`Resume from ${PATH}`))).toBe(true)
+})
+
 test('25: a rejected /clear toasts and leaves nothing armed', async ($, on) => {
   const w = world(on)
   w.clear.rejects = true
@@ -335,10 +400,15 @@ test('25: a rejected /clear toasts and leaves nothing armed', async ($, on) => {
   await $.turn.complete(ended())
   await settle(w)
   expect(w.toasts.some(t => t.includes('auto-clear failed'))).toBe(true)
-  await $.turn.start({ text: 'x', turnId: 't2' })
-  await $.turn.complete(ended('answer', 't2'))
+  await opened($)
   await settle(w)
   expect(w.submitted).toEqual([])
+  w.clear.rejects = false
+  await $.turn.start({ text: '/clear-handoff', turnId: 't2' })
+  await arm($)
+  await $.turn.complete(ended('answer', 't2'))
+  await settle(w)
+  expect(w.ran).toEqual(['clear'])
 })
 
 test('26: an arm from an earlier turn lapses when a new turn starts', async ($, on) => {

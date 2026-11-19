@@ -82,8 +82,8 @@ A function-hook module (`hooks/register.ts`) does the two keypresses. Anything y
 
 | You do this | The plugin |
 |---|---|
-| Send a prompt during the handoff turn, or before the clear runs | does not clear |
-| Press Esc, or the turn ends in an error or refusal | does not clear; run `/clear` when ready |
+| Send a prompt (or ping from Slack) while the handoff turn runs | does not clear |
+| Press Esc before the turn ends, or the turn ends in an error or refusal | does not clear; run `/clear` when ready |
 | Run `/clear` yourself | stands down; the handoff still loads |
 | Type in the fresh session before the resume prompt goes | does not send it |
 
