@@ -23,7 +23,8 @@ def has_directive(text):
     # the "# Handoff" title, the "**Resume this work.**" line, then
     # "## Directive". Only that position counts, so nothing later in the file
     # (a code fence, a quoted example) can pass as the user's instruction.
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    # Unindented lines only: an indented "## Directive" is a code block.
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
     return (
         len(lines) >= 3
         and lines[0].startswith("# ")

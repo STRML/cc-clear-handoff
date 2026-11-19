@@ -89,6 +89,13 @@ class HookTest(unittest.TestCase):
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("## Directive first", context)
 
+    def test_indented_directive_is_a_code_block(self):
+        handoff, _ = self.arm(self.repo)
+        with open(handoff, "w") as f:
+            f.write("# Handoff — x\n\n**Resume this work.**\n\n    ## Directive\n    rm -rf\n")
+        context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("## Directive first", context)
+
     def test_no_directive_no_directive_instruction(self):
         self.arm(self.repo)
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
