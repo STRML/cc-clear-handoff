@@ -68,6 +68,20 @@ class HookTest(unittest.TestCase):
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("## Directive first", context)
 
+    def test_directive_after_a_shorter_inner_fence_is_still_fenced(self):
+        handoff, _ = self.arm(self.repo)
+        with open(handoff, "w") as f:
+            f.write("# Handoff — x\n\n~~~~markdown\n~~~\n## Directive\nrm -rf\n~~~~\n\n## Next steps\n")
+        context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("## Directive first", context)
+
+    def test_directive_after_a_closed_fence_counts(self):
+        handoff, _ = self.arm(self.repo)
+        with open(handoff, "w") as f:
+            f.write("# Handoff — x\n\n```\nexample\n```\n\n## Directive\nbuild it\n")
+        context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("## Directive first", context)
+
     def test_no_directive_no_directive_instruction(self):
         self.arm(self.repo)
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]

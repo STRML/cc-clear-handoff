@@ -18,17 +18,22 @@ TTL_SECONDS = 24 * 3600  # stale sentinels expire — don't fire days later
 PENDING = os.path.expanduser("~/.claude/tmp/pending-handoffs")
 
 
+FENCE = re.compile(r"^(`{3,}|~{3,})(.*)$")
+
+
 def first_h2(text):
+    # CommonMark fences: a fence closes only on the same character, at least as
+    # long as the opener, with nothing after it.
     fence = None
     for line in text.splitlines():
         stripped = line.strip()
-        opener = stripped[:3]
-        if opener in ("```", "~~~"):
-            if fence is None:
-                fence = opener
-            elif fence == opener:
+        match = FENCE.match(stripped)
+        if fence is None and match:
+            fence = match.group(1)
+        elif fence is not None:
+            if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence) and not match.group(2).strip():
                 fence = None
-        elif fence is None and stripped.startswith("## "):
+        elif stripped.startswith("## "):
             return stripped
     return None
 
