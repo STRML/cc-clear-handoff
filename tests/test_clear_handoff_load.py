@@ -47,6 +47,18 @@ class HookTest(unittest.TestCase):
         self.assertIn(handoff, out["hookSpecificOutput"]["additionalContext"])
         self.assertFalse(os.path.exists(sentinel))
 
+    def test_directive_is_carried_out_first(self):
+        handoff, _ = self.arm(self.repo)
+        with open(handoff, "w") as f:
+            f.write("# Handoff — feature x\n\n## Directive\nbuild it\n\n## Next steps\n1. ship it\n")
+        context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("carry out its ## Directive first", context)
+
+    def test_no_directive_no_directive_instruction(self):
+        self.arm(self.repo)
+        context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("## Directive first", context)
+
     def test_armed_in_worktree_loads_in_launch_dir(self):
         handoff, sentinel = self.arm(self.worktree)
         out = self.run_hook(self.repo)

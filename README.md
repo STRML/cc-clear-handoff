@@ -2,7 +2,7 @@
 
 A focused, **un-loseable** alternative to `/compact` for [Claude Code](https://claude.com/claude-code).
 
-`/compact` summarizes your whole transcript lossily and unfocused. `/clear-handoff` instead writes a **curated handoff** — only what the next session actually needs — saves it to a file, and **auto-loads it into the next session after you `/clear`**. Nothing to copy, nothing to lose.
+`/compact` summarizes your whole transcript lossily and unfocused. `/clear-handoff` instead writes a **curated handoff** — only what the next session actually needs — saves it to a file, then **clears the session and resumes from the handoff by itself**. Nothing to copy, nothing to lose, no keypress.
 
 ## Why
 
@@ -45,6 +45,8 @@ Add the marketplace and install the plugin:
 /plugin install cc-clear-handoff
 ```
 
+Or in one step: `/plugin install cc-clear-handoff --marketplace STRML/cc-clear-handoff`.
+
 Requires `python3` (preinstalled on macOS and most Linux).
 
 ## Usage
@@ -55,13 +57,37 @@ When context is getting long, instead of `/compact`:
 /clear-handoff
 ```
 
-Optionally focus the handoff for the next session:
+Add an instruction for the next session after the command. It goes into the handoff as its `## Directive`, and the fresh session carries it out first:
 
 ```
+/clear-handoff build it
 /clear-handoff finish the CR loop on PR 42
 ```
 
-Then run `/clear`. The handoff loads automatically. (If it ever doesn't, the command also prints a one-line fallback you can paste: `Resume from <path>`.)
+You don't run `/clear` yourself. When the turn that saved the handoff ends, the plugin clears the session and sends `Resume from <path>` as the fresh session's first prompt. If it ever doesn't, run `/clear` (the handoff still loads) or paste the fallback line the command prints.
+
+## Hands-free clear and resume
+
+```
+/clear-handoff turn                       fresh session
+───────────────────                       ─────────────
+arm step prints                           clear-handoff-load.py injects
+"clear-handoff armed: <path>"  ─▶ armed     the handoff (as before)
+turn ends with an answer       ─▶ /clear ─▶ plugin sends "Resume from <path>"
+```
+
+A function-hook module (`hooks/register.ts`) does the two keypresses. Anything you do yourself wins over it:
+
+| You do this | The plugin |
+|---|---|
+| Send a prompt during the handoff turn, or before the clear runs | does not clear |
+| Press Esc, or the turn ends in an error or refusal | does not clear; run `/clear` when ready |
+| Run `/clear` yourself | stands down; the handoff still loads |
+| Type in the fresh session before the resume prompt goes | does not send it |
+
+Background subagents keep running across the clear, so the plugin does not wait for them. The handoff records where each one's output lands.
+
+The approach comes from [cc-build-handoff](https://github.com/seanperkins/cc-build-handoff) by Sean Perkins, which automated the same two steps for a build handoff.
 
 ## Files
 
@@ -69,7 +95,9 @@ Then run `/clear`. The handoff loads automatically. (If it ever doesn't, the com
 cc-clear-handoff/
 ├── commands/clear-handoff.md      the /clear-handoff command
 ├── hooks/clear-handoff-load.py    SessionStart auto-loader (one-shot, cwd-scoped)
-└── hooks/hooks.json               registers the hook
+├── hooks/register.ts              function hooks: auto /clear and resume prompt
+├── hooks/register.test.ts         its tests (claude plugin test .)
+└── hooks/hooks.json               registers the loader and the module
 ```
 
 ## License

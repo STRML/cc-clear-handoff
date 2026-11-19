@@ -8,3 +8,4 @@ handoff-*.md
 # Python bytecode
 __pycache__/
 *.pyc
+.claude-plugin/types/

@@ -1,0 +1,351 @@
+import type { On } from 'claude-code'
+import { expect, mock, test } from 'claude-code/testing'
+
+const PATH = '/repo/.tmp/auto-clear-resume-20261119-010000.md'
+const ARM = `HF="${PATH}"; printf '%s' "$HF" > ~/.claude/tmp/pending-handoffs/x.path && echo "clear-handoff armed: $HF"`
+
+// The engine beneath the mod: a clock, a Bash tool whose output we set, slash
+// commands we record, a helper roster, a prompt box, and the prompts our mod
+// submits.
+function world(on: On, opts: { box?: string } = {}) {
+  const ran: string[] = []
+  const filled: string[] = []
+  const submitted: string[] = []
+  const toasts: string[] = []
+  const bash = { out: `clear-handoff armed: ${PATH}\n`, fails: false }
+  const refuse = { plugin: undefined as string | undefined }
+  const clear = { rejects: false }
+  const clock = mock.clock(on, { now: 1_000_000 })
+  on('session.id', () => ({ value: 'plan-1' }))
+  on('prompt.read', () => ({ value: { text: opts.box ?? '', cursor: 0 } }))
+  on('prompt.fill', (_, e) => {
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  on('ui.toast', (_, e) => {
+    toasts.push(String((e as { text?: string }).text ?? e))
+    return { value: undefined }
+  })
+  on('tool.call', () =>
+    bash.fails ? { result: {}, text: 'permission denied', isError: true } : { result: {}, text: bash.out },
+  )
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('prompt.submit', (_, e) => {
+    if (e.origin.kind === 'plugin') {
+      if (refuse.plugin) return { drop: refuse.plugin }
+      submitted.push(e.text)
+    }
+    return { text: e.text }
+  })
+  on('command.run', (_, e) => {
+    if (clear.rejects) throw new Error('busy')
+    ran.push(e.command)
+    return { text: '' }
+  })
+  on('classic.SessionStart', () => ({}))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  return { ran, filled, submitted, toasts, bash, refuse, clear, clock }
+}
+
+type W = ReturnType<typeof world>
+
+const ended = (reason: 'answer' | 'aborted' | 'error' | 'refusal' = 'answer', turnId = 't1', agentId?: string): never => ({
+  answer: 'Handoff saved',
+  durationMs: 10,
+  isAborted: reason === 'aborted',
+  turnId,
+  reason,
+  ...(agentId ? { agentId } : {}),
+}) as never
+
+const person = (turnId?: string) => ({
+  text: 'wait, one more thing',
+  wait: false,
+  origin: { kind: 'composer' as const },
+  ...(turnId ? { turnId } : {}),
+})
+
+const notification = (turnId?: string) => ({
+  text: '<task-notification>done</task-notification>',
+  wait: false,
+  origin: { kind: 'task-notification' as const },
+  ...(turnId ? { turnId } : {}),
+})
+
+const typedClear = { command: 'clear', args: '', origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 120 } }
+const otherPluginClear = { command: 'clear', args: '', origin: { kind: 'plugin' as const, name: 'someone-else' }, presentation: { isFullscreen: false, columns: 120 } }
+
+const arm = ($: any, command = ARM, agentId?: string) =>
+  $.tool.call({ tool: 'Bash', command, ...(agentId ? { agentId } : {}) })
+
+const opened = ($: any, source = 'clear') => $.classic.SessionStart({ source, session_id: 'fresh-1' } as never)
+
+async function settle(w: W) {
+  await w.clock.settle()
+}
+
+// Arm in t1 and end t1 with an answer; the /clear is queued, not yet run.
+async function armedTurn($: any) {
+  await $.turn.start({ text: '/clear-handoff', turnId: 't1' })
+  await arm($)
+}
+
+// Full happy path up to the fresh session's SessionStart.
+async function launched($: any, w: W) {
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  await opened($)
+  await settle(w)
+}
+
+test('1: armed turn ends with an answer: one /clear, then Resume from <path>', async ($, on) => {
+  const w = world(on)
+  await launched($, w)
+  expect(w.ran).toEqual(['clear'])
+  expect(w.submitted).toEqual([`Resume from ${PATH}`])
+})
+
+test('2: a failed or denied arm arms nothing', async ($, on) => {
+  const w = world(on)
+  w.bash.fails = true
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('3: the marker in output of a command that is not the arm step does not arm', async ($, on) => {
+  const w = world(on)
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await arm($, 'cat notes.txt')
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test("4: a subagent's arm is ignored", async ($, on) => {
+  const w = world(on)
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await arm($, ARM, 'a1')
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('5: a relative path does not arm', async ($, on) => {
+  const w = world(on)
+  w.bash.out = 'clear-handoff armed: .tmp/x.md\n'
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('6: the last marker line wins, spaces kept', async ($, on) => {
+  const w = world(on)
+  const spaced = '/Users/x/My Repo/.tmp/a b.md'
+  w.bash.out = `clear-handoff armed: /old.md\nnoise\nclear-handoff armed: ${spaced}\n`
+  await launched($, w)
+  expect(w.submitted).toEqual([`Resume from ${spaced}`])
+})
+
+test('7: a failed second arm disarms the first', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  w.bash.fails = true
+  await arm($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('8: an arm without a seen turn.start (mid-turn reload) does not arm', async ($, on) => {
+  const w = world(on)
+  await arm($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+  expect(w.toasts.some(t => t.includes('by hand'))).toBe(true)
+  expect(w.toasts.some(t => t.includes('When this turn ends'))).toBe(false)
+})
+
+for (const reason of ['aborted', 'error', 'refusal'] as const) {
+  test(`9: a turn that ends ${reason} does not clear`, async ($, on) => {
+    const w = world(on)
+    await armedTurn($)
+    await $.turn.complete(ended(reason))
+    await settle(w)
+    expect(w.ran).toEqual([])
+  })
+}
+
+for (const turnId of ['t1', undefined]) {
+  test(`11: a person's prompt during the armed turn (turnId ${turnId}) cancels`, async ($, on) => {
+    const w = world(on)
+    await armedTurn($)
+    await $.prompt.submit(person(turnId))
+    await $.turn.complete(ended())
+    await settle(w)
+    expect(w.ran).toEqual([])
+  })
+}
+
+test('12: a task notification during the armed turn does not cancel', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.prompt.submit(notification('t1'))
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual(['clear'])
+})
+
+test('13: a person prompt after the turn, before the /clear runs, drops it', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await $.prompt.submit(person())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('14: a new main-loop turn while the /clear is queued drops it', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await $.turn.start({ text: 'notified', turnId: 't2' })
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test("15: a person's /clear before the launch stands the mod down", async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.command.run(typedClear)
+  await opened($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual(['clear'])
+  expect(w.submitted).toEqual([])
+})
+
+test("16: a person's /clear while the launch is in flight runs exactly one /clear", async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await $.command.run(typedClear)
+  await settle(w)
+  await opened($)
+  await settle(w)
+  expect(w.ran).toEqual(['clear'])
+  expect(w.submitted).toEqual([])
+})
+
+test("17: another plugin's /clear while ours is queued does not take our SessionStart", async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  await $.command.run(otherPluginClear)
+  await opened($)
+  await settle(w)
+  expect(w.submitted).toEqual([])
+  await opened($)
+  await settle(w)
+  expect(w.submitted).toEqual([`Resume from ${PATH}`])
+})
+
+for (const source of ['startup', 'compact', 'resume']) {
+  test(`18: a ${source} SessionStart while launching does not submit`, async ($, on) => {
+    const w = world(on)
+    await armedTurn($)
+    await $.turn.complete(ended())
+    await settle(w)
+    await opened($, source)
+    await settle(w)
+    expect(w.submitted).toEqual([])
+  })
+}
+
+test('19: an abort that reaches SessionStart after our /clear ran does not submit', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  await $.prompt.submit(person())
+  await opened($)
+  await settle(w)
+  expect(w.submitted).toEqual([])
+  expect(w.toasts.some(t => t.includes('not sent'))).toBe(true)
+})
+
+test('20: a SessionStart over 2 minutes late does not submit', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  await w.clock.advance(3 * 60 * 1000)
+  await opened($)
+  await settle(w)
+  expect(w.submitted).toEqual([])
+})
+
+test('21: a person typing first in the fresh session skips our submit', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  await opened($)
+  await $.prompt.submit(person())
+  await settle(w)
+  expect(w.submitted).toEqual([])
+})
+
+test('22: a task notification in the fresh session does not skip our submit', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  await opened($)
+  await $.prompt.submit(notification())
+  await settle(w)
+  expect(w.submitted).toEqual([`Resume from ${PATH}`])
+})
+
+test('23: a refused submit with an empty box fills the box', async ($, on) => {
+  const w = world(on)
+  w.refuse.plugin = 'a Stop stands'
+  await launched($, w)
+  expect(w.filled).toEqual([`Resume from ${PATH}`])
+  expect(w.toasts.some(t => t.includes('Enter'))).toBe(true)
+})
+
+test('24: a refused submit with text in the box leaves it and names the prompt', async ($, on) => {
+  const w = world(on, { box: 'draft' })
+  w.refuse.plugin = 'a Stop stands'
+  await launched($, w)
+  expect(w.filled).toEqual([])
+  expect(w.toasts.some(t => t.includes(`Resume from ${PATH}`))).toBe(true)
+})
+
+test('25: a rejected /clear toasts and leaves nothing armed', async ($, on) => {
+  const w = world(on)
+  w.clear.rejects = true
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.toasts.some(t => t.includes('auto-clear failed'))).toBe(true)
+  await $.turn.start({ text: 'x', turnId: 't2' })
+  await $.turn.complete(ended('answer', 't2'))
+  await settle(w)
+  expect(w.submitted).toEqual([])
+})
+
+test('26: an arm from an earlier turn lapses when a new turn starts', async ($, on) => {
+  const w = world(on)
+  await armedTurn($)
+  await $.turn.start({ text: 'x', turnId: 't2' })
+  await $.turn.complete(ended('answer', 't2'))
+  await settle(w)
+  expect(w.ran).toEqual([])
+})

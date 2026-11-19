@@ -137,11 +137,18 @@ def main():
         f'open with a one-line recap naming what we were working on'
         f'{f" ({topic})" if topic else ""} so the user has their bearings, then '
     )
+    has_directive = any(line.strip() == "## Directive" for line in handoff.splitlines())
+    first_move = (
+        "carry out its ## Directive first (the user's own instruction for this "
+        "session), then continue from its Next steps"
+        if has_directive
+        else "immediately continue from the handoff's Next steps"
+    )
     context = (
         f"A /clear-handoff (armed {age_str}) was pending for this directory and "
         "has been auto-loaded below. On the user's next message — even a bare "
-        f"'resume'/'go' — {recap_line}immediately continue from the handoff's Next "
-        "steps: act on them, don't re-summarize the whole handoff back. Read any "
+        f"'resume'/'go' — {recap_line}{first_move}: act on them, don't re-summarize "
+        "the whole handoff back. Read any "
         "referenced files before acting. NOTE: any subagents listed in the handoff "
         "belonged to the PREVIOUS session. Their old Task IDs do NOT survive /clear "
         "(SendMessage rejects session-qualified ids and `claude agents --json` is "

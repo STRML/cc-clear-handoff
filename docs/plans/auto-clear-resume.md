@@ -23,8 +23,8 @@ The Python SessionStart loader stays the only thing that injects the handoff. A 
 2 Bash arms sentinel, prints                       5 clear-handoff-load.py injects the
   "clear-handoff armed: <abs path>"                  handoff; its context says a
   → tool.call hook: armed = {path, turnId}           Directive, when present, runs first
-3 turn.complete(reason answer, same turn,          6 mod submits, as the user:
-  no helpers running)                                "Resume from <path>"
+3 turn.complete(reason answer, same turn)         6 mod submits, as the user:
+                                                     "Resume from <path>"
 4 $.command.run('clear') from clock.after(0)
 ```
 
@@ -41,7 +41,7 @@ Parts:
    - The closing print says the session clears itself, and the turn ends right after it.
 3. `hooks/clear-handoff-load.py`: its `additionalContext` tells the model to carry out a
    `## Directive` first when the handoff has one. This covers a manual `/clear` too.
-4. README: the flow, what cancels it, the helpers rule, the `--plugin-dir` dev loop, and tests.
+4. README: the flow, what cancels it, the `--plugin-dir` dev loop, and tests.
 
 ## Arming rules
 
@@ -58,18 +58,13 @@ The mod arms on a `tool.call` for `Bash` only when all of these hold:
 An arm command that fails or is denied disarms an earlier arm in the same turn. It never falls
 back to an older handoff.
 
-## Helpers rule (replaces the round-1 wait gate)
+## Background subagents (revision 3: no gate)
 
-A background subagent's result arrives as a task notification, which starts a new main-loop turn
-in the old session. Work done in that turn is missing from the handoff already written, so
-clearing after it would discard it. The mod therefore never waits.
-
-On the armed turn's `turn.complete`, when `$.agent.list()` holds any main-loop child (no
-`parentId`) whose `taskStatus` is `running` or `pending`, the mod skips the auto-clear, keeps the
-sentinel armed, and toasts "N helpers running; not auto-clearing. Run /clear when ready."
-
-Background `Bash` tasks are not agents and are not checked: the handoff records where their output
-lands, and the command's rules already say so.
+Background subagents survive `/clear` (Sam, 2026-11-19), so the mod clears as soon as the turn
+ends, whatever is still running. A subagent that finishes afterwards reports into the fresh
+session, and the handoff already records where each one's output lands. The live run checks that
+the notification arrives in the fresh session; if it does not, that becomes a new design round,
+not a silent gate.
 
 ## Cancellation rules
 
@@ -101,7 +96,7 @@ it covers changes.
 | 7 | Second arm in the turn fails after a first succeeded | Disarmed; no clear |
 | 8 | Arm without a seen `turn.start` (mid-turn reload) | Not armed; toast says /clear by hand |
 | 9 | Turn ends `aborted` (Esc), `error`, or `refusal` | No clear; toast says run /clear |
-| 10 | Helpers running at turn end | No clear; toast; sentinel untouched |
+| 10 | Background subagents running at turn end | Clears anyway (the mod never reads the agent list; covered by the live run) |
 | 11 | Person prompt during the armed turn, with or without `turnId` | No clear; their prompt runs |
 | 12 | Task notification during the armed turn | Still clears at turn end |
 | 13 | Person prompt after the turn, before the queued /clear runs | Our /clear is dropped |
@@ -125,8 +120,10 @@ it covers changes.
    the engine writes when it loads the mod; `tsc -p .` runs locally after a load and is not a CI
    gate.
 2. `claude plugin test .` with every row green, and `python3 -m pytest tests` still green.
-3. Live run in `claude --plugin-dir .`: in a scratch repo, `/clear-handoff write hello.txt` ends in
-   a fresh session that writes the file with no keypress. Record the transcript path.
+3. Live run in `claude --plugin-dir .`: in a scratch repo, start a background subagent that sleeps
+   60 seconds, then `/clear-handoff write hello.txt`. Pass: the session clears with no keypress,
+   the fresh session writes the file, and the subagent's notification arrives in the fresh
+   session. Record the transcript path.
 
 ## Ship
 
