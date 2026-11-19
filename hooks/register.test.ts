@@ -595,3 +595,25 @@ test('L1: turn.start raised inside the submit chain (as the engine does) still a
   await settle(w)
   expect(w.ran).toEqual(['clear'])
 })
+
+for (const args of ["don't clear", 'do not clear, build it', '--no-clear', 'no clear: switching accounts', "build it, don't clear"]) {
+  test(`N1: "/handoff ${args}" saves the handoff but never clears`, async ($, on) => {
+    const w = world(on)
+    await $.prompt.submit({ ...handoffCommand('handoff'), text: `/handoff ${args}`, command: { name: 'handoff', args } })
+    await $.turn.start({ text: '/handoff', turnId: 't1' })
+    await writeHandoff($)
+    await $.turn.complete(ended())
+    await settle(w)
+    expect(w.ran).toEqual([])
+  })
+}
+
+test('N2: a directive that merely mentions clearing still clears', async ($, on) => {
+  const w = world(on)
+  await $.prompt.submit({ ...handoffCommand(), command: { name: 'clear-handoff', args: 'clear the old cache files' } })
+  await $.turn.start({ text: '/clear-handoff', turnId: 't1' })
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual(['clear'])
+})

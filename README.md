@@ -57,7 +57,7 @@ When context is getting long, instead of `/compact`:
 /clear-handoff
 ```
 
-`/handoff` is an alias for the same command.
+`/handoff` is an alias for the same command. Add `don't clear` (or `--no-clear`) to save the handoff without clearing, for example when you hand off to another account or harness: `/handoff don't clear`.
 
 Other agent harnesses (OMP, Codex) get the same procedure from `shared-skills/clear-handoff` and its `handoff` alias: link both into `~/.agents/skills/`. There the handoff is saved and you start the fresh session yourself.
 

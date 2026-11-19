@@ -12,6 +12,9 @@ import type { Hook, Register } from 'claude-code'
 // a manual /clear still loads the handoff.
 
 const COMMANDS = ['clear-handoff', 'handoff']
+// "/handoff don't clear": save and arm, but leave the session as it is (handing
+// off to another account or harness).
+const NO_CLEAR = /(^|[\s,;:])(--no-clear|no[\s-]clear|don'?t[\s-]clear|do not clear)\b/i
 const SENTINEL_DIR = '/.claude/tmp/pending-handoffs/'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
 // The loader drops sentinels older than this (clear-handoff-load.py TTL).
@@ -160,7 +163,7 @@ function personSpoke($: Api, startsHandoff: boolean): void {
 export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (!isPerson(e.origin)) return next(e)
-    const startsHandoff = !!e.command && isHandoffCommand($, e.command.name)
+    const startsHandoff = !!e.command && isHandoffCommand($, e.command.name) && !NO_CLEAR.test(e.command.args)
     const seq = ++submitSeq
     // Set intent before next(): the engine raises this submission's turn.start
     // inside the chain, before next() resolves. A dropped submission starts no
