@@ -4,5 +4,5 @@ description: Alias for clear-handoff. Save a focused handoff file so a fresh ses
 argument-hint: "[optional: what the next session should do]"
 ---
 
-`handoff` is an alias. Run the `clear-handoff` skill (`../clear-handoff/SKILL.md`) with the
-same arguments, and follow it exactly.
+`handoff` is an alias. Run the `clear-handoff` skill (by name) with the same arguments, and
+follow it exactly.

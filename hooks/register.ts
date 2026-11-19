@@ -14,7 +14,7 @@ import type { Hook, Register } from 'claude-code'
 const COMMANDS = ['clear-handoff', 'handoff']
 // "/handoff don't clear": save and arm, but leave the session as it is (handing
 // off to another account or harness).
-const NO_CLEAR = /(^|[\s,;:])(--no-clear|no[\s-]clear|don'?t[\s-]clear|do not clear)\s*([,;:.!]|$)/i
+const NO_CLEAR = /(^|[\s,;:])(--no-clear|no[\s-]clear|don['’]?t[\s-]clear|do not clear)\s*([,;:.!]|$)/i
 const SENTINEL_DIR = '/.claude/tmp/pending-handoffs/'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
 // The loader drops sentinels older than this (clear-handoff-load.py TTL).

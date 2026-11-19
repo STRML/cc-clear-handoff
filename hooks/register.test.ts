@@ -603,7 +603,7 @@ test('L1: turn.start raised inside the submit chain (as the engine does) still a
   expect(w.ran).toEqual(['clear'])
 })
 
-for (const args of ["don't clear", 'do not clear, build it', '--no-clear', 'no clear: switching accounts', "build it, don't clear"]) {
+for (const args of ["don't clear", 'don’t clear', 'do not clear, build it', '--no-clear', 'no clear: switching accounts', "build it, don't clear"]) {
   test(`N1: "/handoff ${args}" saves the handoff but never clears`, async ($, on) => {
     const w = world(on)
     await $.prompt.submit({ ...handoffCommand('handoff'), text: `/handoff ${args}`, command: { name: 'handoff', args } })

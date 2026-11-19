@@ -7,7 +7,8 @@ argument-hint: "[optional: what the next session should do]"
 # Clear-handoff
 
 Follow the procedure in `commands/clear-handoff.md` of the cc-clear-handoff repo this skill
-ships in, with `$ARGUMENTS` as the user's instruction for the next session. This skill folder
+ships in (if that file is not on disk, for a copied install, read it from
+https://github.com/STRML/cc-clear-handoff/blob/main/commands/clear-handoff.md), with `$ARGUMENTS` as the user's instruction for the next session. This skill folder
 is usually a symlink: resolve this SKILL.md's real path (`realpath`), and the command is
 `../../commands/clear-handoff.md` from there. That file is the single source of truth for what goes in a handoff, where it
 is saved, and how it is armed. Read it fully before acting.
@@ -23,5 +24,7 @@ Harness differences:
   > Handoff saved → `<absolute-handoff-path>`
   > Start a fresh session (`/new` or `/clear`) and send: **`Resume from <absolute-handoff-path>`**
 
+Ignore the command's Claude Code-only parts here: its closing message (use the one above), its line
+about ending the turn for the auto-clear, and `TaskList`/`TaskGet` if the harness has no task list.
 Use the tools the harness has for the same jobs: its file-write tool to write the handoff,
 its shell to arm it, its task list (if any) to record running subagents.

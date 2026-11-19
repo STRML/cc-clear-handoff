@@ -12,7 +12,7 @@ You are producing a **handoff**: a curated file capturing exactly what a fresh s
 - **Capture, don't summarize the transcript.** Include the live working state (goal, decisions, next steps, gotchas), not a play-by-play of the conversation.
 - **Reference, don't duplicate.** Point to files by `path:line`, PRs/issues by number, plans/PRDs/ADRs by path. Do not paste content that already lives in an artifact — the next session can read it.
 - **No fabricated identifiers.** Every SHA, PR number, path, Task ID, and line number must come from a command you actually ran this turn (`git rev-parse HEAD`, `TaskList`, etc.) or from earlier in *this* conversation. Look it up or omit it.
-- If `$ARGUMENTS` says not to clear (`don't clear`, `no clear` or `--no-clear` as a clause of its own, followed by nothing or by punctuation; `don't clear the cache` is a Directive, not this), the plugin leaves the session as it is: the user is handing off to another account or harness. Leave that phrase out of the Directive, and end with the manual line below instead of saying the session clears itself.
+- If `$ARGUMENTS` says not to clear (`don't clear` or `don’t clear`, `no clear` or `--no-clear` as a clause of its own, followed by nothing or by punctuation; `don't clear the cache` is a Directive, not this), the plugin leaves the session as it is: the user is handing off to another account or harness. Leave that phrase out of the Directive, and end with the manual line below instead of saying the session clears itself.
 - If `$ARGUMENTS` is present, it is the user's instruction for the next session (`/clear-handoff build it`). Put it verbatim in a `## Directive` section right after the `**Resume this work.**` line, exactly as the template shows (the loader reads a Directive only there), and bias the rest of the handoff toward it. The fresh session carries out the Directive first. Without `$ARGUMENTS`, leave the section out.
 
 ## Gather (fast, parallel, read-only)
@@ -30,7 +30,7 @@ Build the handoff content using the template below. Fill in only the sections th
 ```markdown
 # Handoff — <one-line mission>
 
-**Resume this work.** Read the referenced files before acting. Outside Claude Code, first run `rm -f "<sentinel-path>"` (keep the quotes) so a later Claude Code session does not load this handoff again.
+**Resume this work.** Read the referenced files before acting. Outside Claude Code, first run `[ "$(cat "<sentinel-path>" 2>/dev/null)" = "<absolute-handoff-path>" ] && rm -f "<sentinel-path>"` (keep the quotes) so a later Claude Code session does not load this handoff again; it removes the sentinel only while it still names this handoff, never a newer one.
 
 ## Directive
 <$ARGUMENTS verbatim; omit this section when there are none>
