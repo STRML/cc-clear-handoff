@@ -68,7 +68,7 @@ Add an instruction for the next session after the command. It goes into the hand
 /clear-handoff finish the CR loop on PR 42
 ```
 
-You don't run `/clear` yourself. When the turn that saved the handoff ends, the plugin clears the session and sends `Resume from <path>` as the fresh session's first prompt. If it ever doesn't, run `/clear` (the handoff still loads) or paste the fallback line the command prints.
+You don't run `/clear` yourself. When the turn that saved the handoff ends, the plugin asks **Clear and resume now** or **Wait**. Enter on the first clears the session and sends `Resume from <path>` as the fresh session's first prompt. If it ever doesn't, run `/clear` (the handoff still loads) or paste the fallback line the command prints.
 
 ## Hands-free clear and resume
 
@@ -77,7 +77,8 @@ you type /clear-handoff ─▶ this turn may clear       fresh session
 Write .tmp/<name>.md ok   ─▶ handoff = that path      ─────────────
 arm step writes sentinel                             clear-handoff-load.py injects
 turn ends with an answer                               the handoff (as before)
-  handoff non-empty, sentinel new + names it ─▶ /clear ─▶ plugin sends "Resume from <path>"
+  handoff non-empty, sentinel new + names it
+  you pick "Clear and resume now"           ─▶ /clear ─▶ plugin sends "Resume from <path>"
 ```
 
 A function-hook module (`hooks/register.ts`) does the two keypresses. It decides from what it can observe, never from the model's text: your command, the `Write` tool's own result, and the files on disk at the moment of the clear. When any check fails it says so and leaves the `/clear` to you. Anything you do yourself wins over it:

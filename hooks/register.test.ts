@@ -26,6 +26,7 @@ function world(on: On, opts: { box?: string; nestTurnStart?: any } = {}) {
   const refuse = { plugin: undefined as string | undefined, person: undefined as string | undefined }
   const clear = { rejects: false }
   const box = { fills: true }
+  const ask = { answer: 'Clear and resume now' as string | undefined, asked: 0 }
   const clock = mock.clock(on, { now: NOW })
   on('session.id', () => ({ value: 'plan-1' }))
   on('session.cwd', () => ({ value: CWD }))
@@ -59,7 +60,13 @@ function world(on: On, opts: { box?: string; nestTurnStart?: any } = {}) {
     toasts.push(String((e as { text?: string }).text ?? e))
     return { value: undefined }
   })
-  on('tool.call', () => {
+  on('tool.call', (_, e) => {
+    if (e.tool === 'AskUserQuestion') {
+      ask.asked += 1
+      if (ask.answer === undefined) return { deny: 'dismissed' }
+      const questions = (e as unknown as { questions: { question: string }[] }).questions
+      return { result: { questions, answers: { [questions[0]!.question]: ask.answer } }, text: '' } as never
+    }
     if (write.denied) return { deny: 'not allowed' }
     return write.fails ? { result: {}, text: 'EACCES', isError: true } : { result: {}, text: 'ok' }
   })
@@ -81,7 +88,7 @@ function world(on: On, opts: { box?: string; nestTurnStart?: any } = {}) {
   })
   on('classic.SessionStart', () => ({}))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  return { ran, filled, submitted, toasts, write, disk, refuse, clear, box, clock }
+  return { ran, filled, submitted, toasts, write, disk, refuse, clear, box, ask, clock }
 }
 
 type W = ReturnType<typeof world>
@@ -616,4 +623,43 @@ test('N2: a directive that merely mentions clearing still clears', async ($, on)
   await $.turn.complete(ended())
   await settle(w)
   expect(w.ran).toEqual(['clear'])
+})
+
+test('Q1: answering Wait does not clear, and says to clear by hand', async ($, on) => {
+  const w = world(on)
+  w.ask.answer = 'Wait'
+  await handoffTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ask.asked).toBe(1)
+  expect(w.ran).toEqual([])
+  expect(w.toasts.some(t => t.includes('by hand'))).toBe(true)
+})
+
+test('Q2: a dismissed question (or -p, nobody to ask) does not clear', async ($, on) => {
+  const w = world(on)
+  w.ask.answer = undefined
+  await handoffTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('Q3: "don\'t clear" never asks', async ($, on) => {
+  const w = world(on)
+  await $.prompt.submit({ ...handoffCommand('handoff'), command: { name: 'handoff', args: "don't clear" } })
+  await $.turn.start({ text: '/handoff', turnId: 't1' })
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ask.asked).toBe(0)
+})
+
+test('Q4: a turn that starts while the question is open still cancels the clear', async ($, on) => {
+  const w = world(on)
+  await handoffTurn($)
+  await $.turn.complete(ended())
+  await $.turn.start({ text: 'notified', turnId: 't2' })
+  await settle(w)
+  expect(w.ran).toEqual([])
 })

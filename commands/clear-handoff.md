@@ -30,7 +30,7 @@ Build the handoff content using the template below. Fill in only the sections th
 ```markdown
 # Handoff — <one-line mission>
 
-**Resume this work.** Read the referenced files before acting.
+**Resume this work.** Read the referenced files before acting. Outside Claude Code, first run `rm -f <sentinel-path>` so a later Claude Code session does not load this handoff again.
 
 ## Directive
 <$ARGUMENTS verbatim; omit this section when there are none>
@@ -74,7 +74,7 @@ cd <dir> && git checkout <branch>   # HEAD was <short-sha>
 
 You **always** save the handoff to a file and arm the SessionStart auto-loader — never print the full block inline, never skip the file.
 
-1. **Resolve an absolute path under `.tmp/` in the cwd.** Name the file for the work, not for the act of handing off: take the mission line of the handoff title and turn it into a lowercase kebab-case slug of 2-5 words (`results-pages-redesign`, `internal-links-seo`). Never `handoff`, `session`, `work`, `wip` or a bare timestamp. Compute the target as `"$(pwd)/.tmp/<slug>-$(date +%Y%m%d-%H%M%S).md"`, and `mkdir -p "$(pwd)/.tmp"` first. Handoffs are ephemeral, single-use session state — `.tmp/` keeps them out of the repo root and (being gitignored) out of version control. Never a bare/relative name and never a system temp dir (`mktemp -t` lands in `$TMPDIR`, not the cwd — that's the bug this avoids). Capture the resolved value; you'll echo it back.
+1. **Resolve an absolute path under `.tmp/` in the cwd.** Name the file for the work, not for the act of handing off: take the mission line of the handoff title and turn it into a lowercase kebab-case slug of 2-5 words (`results-pages-redesign`, `internal-links-seo`). Never `handoff`, `session`, `work`, `wip` or a bare timestamp. Compute the target as `"$(pwd)/.tmp/<slug>-$(date +%Y%m%d-%H%M%S).md"`, and `mkdir -p "$(pwd)/.tmp"` first. Handoffs are ephemeral, single-use session state — `.tmp/` keeps them out of the repo root and (being gitignored) out of version control. Never a bare/relative name and never a system temp dir (`mktemp -t` lands in `$TMPDIR`, not the cwd — that's the bug this avoids). Capture the resolved value; you'll echo it back. Also resolve the sentinel path now, for the template's resume line: `~/.claude/tmp/pending-handoffs/$(python3 -c "import re,os;print(re.sub(r'[/.]','-',os.path.realpath(os.getcwd())).strip('-'))").path`, expanded to an absolute path.
 2. **`Write` the handoff content to that absolute path.**
 3. **Arm the auto-loader.** Drop a sentinel so the `clear-handoff-load.py` SessionStart hook injects this handoff into the next session in this directory (and then deletes itself — single use). Run, substituting the real absolute handoff path:
    ```bash
@@ -89,7 +89,7 @@ You **always** save the handoff to a file and arm the SessionStart auto-loader �
 Then print **only a very short prompt** — nothing else, no inline dump. Exactly:
 
 > Handoff saved → `<absolute-handoff-path>`
-> This session clears and resumes by itself when this turn ends. If it doesn't, run `/clear`, or paste: **`Resume from <absolute-handoff-path>`**
+> When this turn ends you'll be asked whether to clear and resume now. If you wait, run `/clear` later, or paste: **`Resume from <absolute-handoff-path>`**
 
 When the user said not to clear, print this instead:
 

@@ -24,6 +24,8 @@ const MTIME_SLACK_MS = 1000
 const CANCELLED = 'clear-handoff: something new came in (your prompt, a /clear, or a notification turn), so not clearing. Run /clear when ready.'
 const BY_HAND = 'Run /clear by hand when ready.'
 const REARM = 'Run /clear-handoff again to save and arm it.'
+export const CLEAR_NOW = 'Clear and resume now'
+export const WAIT = 'Wait'
 // Origins that carry the session owner's own words.
 const PERSON_KINDS = new Set(['composer', 'bridge', 'sdk', 'slack-ping', 'channel'])
 
@@ -89,7 +91,25 @@ function forgetIntent(): void {
   writtenPath = undefined
 }
 
+// The person decides each time; a dismissed dialog, or a -p run with no one
+// to ask, means wait.
+async function wantsClearNow($: Api): Promise<boolean> {
+  try {
+    const answer = await $.ui.ask('Clear this session and resume from the handoff now?', {
+      header: 'Handoff',
+      options: [CLEAR_NOW, WAIT],
+    })
+    return answer === CLEAR_NOW
+  } catch {
+    return false
+  }
+}
+
 async function clearNow($: Api, path: string): Promise<void> {
+  if (!(await wantsClearNow($))) {
+    $.ui.toast(`clear-handoff: not clearing. ${BY_HAND}`)
+    return
+  }
   const at = await $.clock.now()
   if (abortLaunch) {
     $.ui.toast(CANCELLED)
