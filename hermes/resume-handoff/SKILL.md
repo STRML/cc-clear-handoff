@@ -26,7 +26,8 @@ workflow, mapped to Hermes: the handoff file IS the resume state, so nothing is 
    may also live at `$(pwd)/.tmp/handoff-*.md` — prefer the most recently modified one.
 2. **Read it fully.** Do not act on a summary; read the actual file.
 3. **Recap, then act.** Open with a one-line recap naming what we were working on (the
-   handoff's mission line), then immediately continue from its **Next steps** — act on them,
+   handoff's mission line). If the handoff has a `## Directive`, carry it out first; otherwise
+   immediately continue from its **Next steps**. Act on them,
    don't re-print the whole handoff back.
 4. **Read referenced files before acting.** The handoff points at files by `path:line`; read
    them rather than re-deriving.

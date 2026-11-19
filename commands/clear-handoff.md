@@ -12,7 +12,7 @@ You are producing a **handoff**: a curated file capturing exactly what a fresh s
 - **Capture, don't summarize the transcript.** Include the live working state (goal, decisions, next steps, gotchas), not a play-by-play of the conversation.
 - **Reference, don't duplicate.** Point to files by `path:line`, PRs/issues by number, plans/PRDs/ADRs by path. Do not paste content that already lives in an artifact — the next session can read it.
 - **No fabricated identifiers.** Every SHA, PR number, path, Task ID, and line number must come from a command you actually ran this turn (`git rev-parse HEAD`, `TaskList`, etc.) or from earlier in *this* conversation. Look it up or omit it.
-- If `$ARGUMENTS` is present, treat it as the focus for the next session and bias the handoff toward it.
+- If `$ARGUMENTS` is present, it is the user's instruction for the next session (`/clear-handoff build it`). Put it verbatim in a `## Directive` section right after the `**Resume this work.**` line, exactly as the template shows (the loader reads a Directive only there), and bias the rest of the handoff toward it. The fresh session carries out the Directive first. Without `$ARGUMENTS`, leave the section out.
 
 ## Gather (fast, parallel, read-only)
 
@@ -30,6 +30,9 @@ Build the handoff content using the template below. Fill in only the sections th
 # Handoff — <one-line mission>
 
 **Resume this work.** Read the referenced files before acting.
+
+## Directive
+<$ARGUMENTS verbatim; omit this section when there are none>
 
 ## Where we are
 <2–4 sentences: what's done, what's in progress right now, what's blocked.>
@@ -77,11 +80,14 @@ You **always** save the handoff to a file and arm the SessionStart auto-loader �
    HF="<absolute-handoff-path>"
    ENC=$(python3 -c "import re,os;print(re.sub(r'[/.]','-',os.path.realpath(os.getcwd())).strip('-'))")
    mkdir -p ~/.claude/tmp/pending-handoffs
-   printf '%s' "$HF" > ~/.claude/tmp/pending-handoffs/$ENC.path
+   test -s "$HF" && printf '%s' "$HF" > ~/.claude/tmp/pending-handoffs/$ENC.path
    ```
+   Run it from the session's launch directory. The plugin clears the session by itself only when you wrote the handoff with the `Write` tool in this turn, under `.tmp/`, and this sentinel (named for the launch directory) holds exactly its path. Otherwise it tells the user to run `/clear` by hand, and the handoff still loads.
    The hook only consumes this on a `clear`/`startup` SessionStart in the directory you armed it in, or in a parent of it inside the same git repo (so a shell that drifted into a subdirectory or `.claude/worktrees/<name>` still hands off to the launch dir), and it expires after 24h — so arm it right before you `/clear`, not hours ahead.
 
 Then print **only a very short prompt** — nothing else, no inline dump. Exactly:
 
 > Handoff saved → `<absolute-handoff-path>`
-> Run `/clear` — it auto-loads in the fresh session. If it doesn't, paste: **`Resume from <absolute-handoff-path>`**
+> This session clears and resumes by itself when this turn ends. If it doesn't, run `/clear`, or paste: **`Resume from <absolute-handoff-path>`**
+
+End the turn right after printing this. Do not call any more tools: the auto-clear waits for this turn to end.

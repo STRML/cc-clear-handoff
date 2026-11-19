@@ -18,6 +18,21 @@ TTL_SECONDS = 24 * 3600  # stale sentinels expire — don't fire days later
 PENDING = os.path.expanduser("~/.claude/tmp/pending-handoffs")
 
 
+def has_directive(text):
+    # The command writes the Directive in a fixed place: the first lines are
+    # the "# Handoff" title, the "**Resume this work.**" line, then
+    # "## Directive". Only that position counts, so nothing later in the file
+    # (a code fence, a quoted example) can pass as the user's instruction.
+    # Unindented lines only: an indented "## Directive" is a code block.
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+    return (
+        len(lines) >= 3
+        and lines[0].startswith("# ")
+        and lines[1].startswith("**Resume this work.**")
+        and lines[2] == "## Directive"
+    )
+
+
 def encode(path):
     return re.sub(r"[/.]", "-", path).strip("-")
 
@@ -137,11 +152,18 @@ def main():
         f'open with a one-line recap naming what we were working on'
         f'{f" ({topic})" if topic else ""} so the user has their bearings, then '
     )
+    directive = has_directive(handoff)
+    first_move = (
+        "carry out its ## Directive first (the user's own instruction for this "
+        "session), then continue from its Next steps"
+        if directive
+        else "immediately continue from the handoff's Next steps"
+    )
     context = (
         f"A /clear-handoff (armed {age_str}) was pending for this directory and "
         "has been auto-loaded below. On the user's next message — even a bare "
-        f"'resume'/'go' — {recap_line}immediately continue from the handoff's Next "
-        "steps: act on them, don't re-summarize the whole handoff back. Read any "
+        f"'resume'/'go' — {recap_line}{first_move}: act on them, don't re-summarize "
+        "the whole handoff back. Read any "
         "referenced files before acting. NOTE: any subagents listed in the handoff "
         "belonged to the PREVIOUS session. Their old Task IDs do NOT survive /clear "
         "(SendMessage rejects session-qualified ids and `claude agents --json` is "
