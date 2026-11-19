@@ -10,7 +10,7 @@ const SENTINEL = `${HOME}/.claude/tmp/pending-handoffs/Users-t-repo.path`
 // The engine beneath the mod: a clock, a Write tool, a file system holding
 // the handoff and the sentinel, slash commands we record, a prompt box, and
 // the prompts our mod submits.
-function world(on: On, opts: { box?: string } = {}) {
+function world(on: On, opts: { box?: string; nestTurnStart?: any } = {}) {
   const ran: string[] = []
   const filled: string[] = []
   const submitted: string[] = []
@@ -64,7 +64,9 @@ function world(on: On, opts: { box?: string } = {}) {
     return write.fails ? { result: {}, text: 'EACCES', isError: true } : { result: {}, text: 'ok' }
   })
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
-  on('prompt.submit', (_, e) => {
+  on('prompt.submit', async (_, e) => {
+    // The engine raises turn.start before the submission's chain resolves.
+    if (opts.nestTurnStart && e.command) await opts.nestTurnStart.turn.start({ text: e.text, turnId: 't1' })
     if (e.origin.kind === 'plugin') {
       if (refuse.plugin) return { drop: refuse.plugin }
       submitted.push(e.text)
@@ -583,4 +585,13 @@ test('R6-3: a newer person prompt wins over a slow /clear-handoff submit', async
   await $.turn.complete(ended())
   await settle(w)
   expect(w.ran).toEqual([])
+})
+
+test('L1: turn.start raised inside the submit chain (as the engine does) still arms', async ($, on) => {
+  const w = world(on, { nestTurnStart: $ })
+  await $.prompt.submit(handoffCommand('cc-clear-handoff:handoff'))
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual(['clear'])
 })

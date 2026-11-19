@@ -162,10 +162,12 @@ export const register: Register = on => {
     if (!isPerson(e.origin)) return next(e)
     const startsHandoff = !!e.command && isHandoffCommand($, e.command.name)
     const seq = ++submitSeq
-    personSpoke($, false)
+    // Set intent before next(): the engine raises this submission's turn.start
+    // inside the chain, before next() resolves. A dropped submission starts no
+    // turn, so its intent is withdrawn afterwards.
+    personSpoke($, startsHandoff)
     const out = await next(e)
-    // Only the newest submission may set intent; a later prompt supersedes it.
-    if (startsHandoff && out.drop === undefined && seq === submitSeq) intentPending = true
+    if (out.drop !== undefined && seq === submitSeq) intentPending = false
     return out
   })
 
