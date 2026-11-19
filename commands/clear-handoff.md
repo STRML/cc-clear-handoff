@@ -12,7 +12,7 @@ You are producing a **handoff**: a curated file capturing exactly what a fresh s
 - **Capture, don't summarize the transcript.** Include the live working state (goal, decisions, next steps, gotchas), not a play-by-play of the conversation.
 - **Reference, don't duplicate.** Point to files by `path:line`, PRs/issues by number, plans/PRDs/ADRs by path. Do not paste content that already lives in an artifact — the next session can read it.
 - **No fabricated identifiers.** Every SHA, PR number, path, Task ID, and line number must come from a command you actually ran this turn (`git rev-parse HEAD`, `TaskList`, etc.) or from earlier in *this* conversation. Look it up or omit it.
-- If `$ARGUMENTS` is present, it is the user's instruction for the next session (`/clear-handoff build it`). Put it verbatim in a `## Directive` section right under the title, and bias the rest of the handoff toward it. The fresh session carries out the Directive first. Without `$ARGUMENTS`, leave the section out.
+- If `$ARGUMENTS` is present, it is the user's instruction for the next session (`/clear-handoff build it`). Put it verbatim in a `## Directive` section right after the `**Resume this work.**` line, exactly as the template shows (the loader reads a Directive only there), and bias the rest of the handoff toward it. The fresh session carries out the Directive first. Without `$ARGUMENTS`, leave the section out.
 
 ## Gather (fast, parallel, read-only)
 

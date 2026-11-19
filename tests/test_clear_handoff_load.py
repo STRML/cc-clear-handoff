@@ -50,7 +50,7 @@ class HookTest(unittest.TestCase):
     def test_directive_is_carried_out_first(self):
         handoff, _ = self.arm(self.repo)
         with open(handoff, "w") as f:
-            f.write("# Handoff — feature x\n\n## Directive\nbuild it\n\n## Next steps\n1. ship it\n")
+            f.write("# Handoff — feature x\n\n**Resume this work.** Read the referenced files before acting.\n\n## Directive\nbuild it\n\n## Next steps\n1. ship it\n")
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("carry out its ## Directive first", context)
 
@@ -75,12 +75,19 @@ class HookTest(unittest.TestCase):
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("## Directive first", context)
 
-    def test_directive_after_a_closed_fence_counts(self):
+    def test_directive_anywhere_but_its_template_position_does_not_count(self):
         handoff, _ = self.arm(self.repo)
         with open(handoff, "w") as f:
-            f.write("# Handoff — x\n\n```\nexample\n```\n\n## Directive\nbuild it\n")
+            f.write("# Handoff — x\n\n**Resume this work.**\n\n```\nexample\n```\n\n## Directive\nbuild it\n")
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("## Directive first", context)
+        self.assertNotIn("## Directive first", context)
+
+    def test_directive_inside_an_indented_fence_closer_case_does_not_count(self):
+        handoff, _ = self.arm(self.repo)
+        with open(handoff, "w") as f:
+            f.write("# Handoff — x\n\n**Resume this work.**\n\n~~~~markdown\n    ~~~~\n## Directive\nrm -rf\n~~~~\n")
+        context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("## Directive first", context)
 
     def test_no_directive_no_directive_instruction(self):
         self.arm(self.repo)

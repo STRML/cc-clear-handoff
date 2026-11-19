@@ -38,7 +38,7 @@ SessionStart-hook parity, the "auto-load" is a durable file in a well-known plac
   paste content that already lives in an artifact — the fresh session can read it.
 - **No fabricated identifiers.** Every SHA, PR number, path, and line number must come from a
   command you actually ran this turn, or earlier in this conversation. Look it up or omit it.
-- If the user supplied an instruction for the next session (`/clear-handoff build it`), put it verbatim in a `## Directive` section right under the title and bias the rest of the handoff toward it. Without one, leave the section out.
+- If the user supplied an instruction for the next session (`/clear-handoff build it`), put it verbatim in a `## Directive` section right after the `**Resume this work.**` line, exactly as the template shows and bias the rest of the handoff toward it. Without one, leave the section out.
 
 ## Gather (fast, parallel, read-only)
 

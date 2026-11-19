@@ -18,24 +18,18 @@ TTL_SECONDS = 24 * 3600  # stale sentinels expire — don't fire days later
 PENDING = os.path.expanduser("~/.claude/tmp/pending-handoffs")
 
 
-FENCE = re.compile(r"^(`{3,}|~{3,})(.*)$")
-
-
-def first_h2(text):
-    # CommonMark fences: a fence closes only on the same character, at least as
-    # long as the opener, with nothing after it.
-    fence = None
-    for line in text.splitlines():
-        stripped = line.strip()
-        match = FENCE.match(stripped)
-        if fence is None and match:
-            fence = match.group(1)
-        elif fence is not None:
-            if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence) and not match.group(2).strip():
-                fence = None
-        elif stripped.startswith("## "):
-            return stripped
-    return None
+def has_directive(text):
+    # The command writes the Directive in a fixed place: the first lines are
+    # the "# Handoff" title, the "**Resume this work.**" line, then
+    # "## Directive". Only that position counts, so nothing later in the file
+    # (a code fence, a quoted example) can pass as the user's instruction.
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return (
+        len(lines) >= 3
+        and lines[0].startswith("# ")
+        and lines[1].startswith("**Resume this work.**")
+        and lines[2] == "## Directive"
+    )
 
 
 def encode(path):
@@ -157,11 +151,11 @@ def main():
         f'open with a one-line recap naming what we were working on'
         f'{f" ({topic})" if topic else ""} so the user has their bearings, then '
     )
-    has_directive = first_h2(handoff) == "## Directive"
+    directive = has_directive(handoff)
     first_move = (
         "carry out its ## Directive first (the user's own instruction for this "
         "session), then continue from its Next steps"
-        if has_directive
+        if directive
         else "immediately continue from the handoff's Next steps"
     )
     context = (
