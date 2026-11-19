@@ -12,15 +12,20 @@ import type { Hook, Register } from 'claude-code'
 // a manual /clear still loads the handoff.
 
 const COMMANDS = ['clear-handoff', 'handoff']
+// "/handoff don't clear": save and arm, but leave the session as it is (handing
+// off to another account or harness).
+const NO_CLEAR = /(^|[\s,;:])(--no-clear|no[\s-]clear|don['’]?t[\s-]clear|do not clear)\s*([,;:.!]|$)/i
 const SENTINEL_DIR = '/.claude/tmp/pending-handoffs/'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
 // The loader drops sentinels older than this (clear-handoff-load.py TTL).
 const SENTINEL_TTL_MS = 24 * 60 * 60 * 1000
 // Filesystems that keep whole-second mtimes round a fresh write down.
 const MTIME_SLACK_MS = 1000
-const CANCELLED = 'clear-handoff: you sent a prompt, so not clearing. Run /clear when ready.'
+const CANCELLED = 'clear-handoff: something new came in (your prompt, a /clear, or a notification turn), so not clearing. Run /clear when ready.'
 const BY_HAND = 'Run /clear by hand when ready.'
 const REARM = 'Run /clear-handoff again to save and arm it.'
+const CLEAR_NOW = 'Clear and resume now'
+const WAIT = 'Wait'
 // Origins that carry the session owner's own words.
 const PERSON_KINDS = new Set(['composer', 'bridge', 'sdk', 'slack-ping', 'channel'])
 
@@ -86,7 +91,31 @@ function forgetIntent(): void {
   writtenPath = undefined
 }
 
+// The person decides each time; a dismissed dialog, or a -p run with no one
+// to ask, means wait.
+async function wantsClearNow($: Api): Promise<boolean> {
+  try {
+    const answer = await $.ui.ask('Clear this session and resume from the handoff now?', {
+      header: 'Handoff',
+      options: [CLEAR_NOW, WAIT],
+    })
+    return answer === CLEAR_NOW
+  } catch {
+    return false
+  }
+}
+
 async function clearNow($: Api, path: string): Promise<void> {
+  if (!(await wantsClearNow($))) {
+    $.ui.toast(`clear-handoff: not clearing. ${BY_HAND}`)
+    return
+  }
+  // The dialog has no timeout: the sentinel may have been consumed or expired
+  // while it was open.
+  if (!(await armedOnDisk($, path))) {
+    $.ui.toast(`clear-handoff: the handoff is no longer armed, so not clearing. ${REARM}`)
+    return
+  }
   const at = await $.clock.now()
   if (abortLaunch) {
     $.ui.toast(CANCELLED)
@@ -160,7 +189,7 @@ function personSpoke($: Api, startsHandoff: boolean): void {
 export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (!isPerson(e.origin)) return next(e)
-    const startsHandoff = !!e.command && isHandoffCommand($, e.command.name)
+    const startsHandoff = !!e.command && isHandoffCommand($, e.command.name) && !NO_CLEAR.test(e.command.args)
     const seq = ++submitSeq
     // Set intent before next(): the engine raises this submission's turn.start
     // inside the chain, before next() resolves. A dropped submission starts no
