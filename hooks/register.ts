@@ -10,6 +10,8 @@ import type { Hook, Register } from 'claude-code'
 // handoff through the sentinel.
 
 const ARMED_MARKER = 'clear-handoff armed: '
+const SENTINEL_MARKER = 'clear-handoff sentinel: '
+const SENTINEL_DIR = '/.claude/tmp/pending-handoffs/'
 const ARM_STEP = 'pending-handoffs'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
 const MTIME_SLACK_MS = 1000
@@ -31,18 +33,32 @@ let launching: { path: string; at: number } | undefined
 let foreignClear = false
 let pendingStart: string | undefined
 
+function lastValue(text: string, marker: string): string | undefined {
+  const lines = text.split('\n').filter(l => l.startsWith(marker))
+  return lines.at(-1)?.slice(marker.length).trim()
+}
+
 function armedPathFrom(text: string | undefined): string | undefined {
-  const lines = (text ?? '').split('\n').filter(l => l.startsWith(ARMED_MARKER))
-  const path = lines.at(-1)?.slice(ARMED_MARKER.length).trim()
+  const path = lastValue(text ?? '', ARMED_MARKER)
   return path?.startsWith('/') && path.includes('/.tmp/') && path.endsWith('.md') ? path : undefined
 }
 
-// The handoff must be a non-empty file written during this turn: an old file
-// at the same path, or any other file the marker names, never arms a /clear.
-async function isFreshHandoff($: Api, path: string): Promise<boolean> {
+async function freshFile($: Api, path: string): Promise<boolean> {
+  const stat = await $.fs.stat(path)
+  return stat.kind === 'file' && stat.size > 0 && stat.mtimeMs >= turnStartedAt - MTIME_SLACK_MS
+}
+
+// Arm only on what the loader will consume: a sentinel in the pending dir,
+// written this turn, naming exactly this handoff, which was also written this
+// turn. The echoed lines are the model's; the files are the proof.
+async function isArmedOnDisk($: Api, path: string, text: string): Promise<boolean> {
+  const sentinel = lastValue(text, SENTINEL_MARKER)
+  const home = await $.env.get('HOME')
+  if (!sentinel || !home || sentinel.includes('..')) return false
+  if (!sentinel.startsWith(home + SENTINEL_DIR) || !sentinel.endsWith('.path')) return false
   try {
-    const stat = await $.fs.stat(path)
-    return stat.kind === 'file' && stat.size > 0 && stat.mtimeMs >= turnStartedAt - MTIME_SLACK_MS
+    if (!(await freshFile($, sentinel)) || !(await freshFile($, path))) return false
+    return (await $.fs.read(sentinel)).trim() === path
   } catch {
     return false
   }
@@ -129,7 +145,7 @@ export const register: Register = on => {
     if (e.agentId || !e.command.includes(ARM_STEP)) return ran
     const failed = ran.deny !== undefined || ran.isError === true
     const path = failed ? undefined : armedPathFrom(ran.text)
-    if (!path || !(await isFreshHandoff($, path))) {
+    if (!path || !(await isArmedOnDisk($, path, ran.text ?? ''))) {
       if (!inFlight) disarm()
       $.ui.toast(`clear-handoff: no handoff file written this turn, so nothing will auto-clear. ${BY_HAND}`)
       return ran

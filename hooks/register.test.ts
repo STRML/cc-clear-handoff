@@ -3,7 +3,9 @@ import { expect, mock, test } from 'claude-code/testing'
 
 const PATH = '/repo/.tmp/auto-clear-resume-20261119-010000.md'
 const NOW = 1_000_000
-const ARM = `HF="${PATH}"; printf '%s' "$HF" > ~/.claude/tmp/pending-handoffs/x.path && echo "clear-handoff armed: $HF"`
+const HOME = '/Users/t'
+const SENTINEL = `${HOME}/.claude/tmp/pending-handoffs/repo.path`
+const ARM = `S=~/.claude/tmp/pending-handoffs/repo.path; printf '%s' "${PATH}" > "$S" && echo "clear-handoff armed: ${PATH}" && echo "clear-handoff sentinel: $S"`
 
 // The engine beneath the mod: a clock, a Bash tool whose output we set, slash
 // commands we record, a helper roster, a prompt box, and the prompts our mod
@@ -13,10 +15,10 @@ function world(on: On, opts: { box?: string } = {}) {
   const filled: string[] = []
   const submitted: string[] = []
   const toasts: string[] = []
-  const bash = { out: `clear-handoff armed: ${PATH}\n`, fails: false, denied: false }
+  const bash = { out: `clear-handoff armed: ${PATH}\nclear-handoff sentinel: ${SENTINEL}\n`, fails: false, denied: false }
   const refuse = { plugin: undefined as string | undefined }
   const clear = { rejects: false }
-  const files = { missing: false, mtimeMs: NOW + 1 }
+  const files = { missing: false, mtimeMs: NOW + 1, sentinelText: PATH, sentinelMissing: false }
   const box = { fills: true }
   const clock = mock.clock(on, { now: NOW })
   on('session.id', () => ({ value: 'plan-1' }))
@@ -26,8 +28,11 @@ function world(on: On, opts: { box?: string } = {}) {
     filled.push(e.text)
     return { isFilled: true }
   })
-  on('fs.stat', () => {
-    if (files.missing) throw new Error('ENOENT')
+  on('env.get', (_, e) => ({ value: e.name === 'HOME' ? HOME : undefined })) as never
+  on('fs.read', () => ({ value: files.sentinelText })) as never
+  on('fs.stat', (_, e) => {
+    const isSentinel = (e as { path: string }).path.endsWith('.path')
+    if (isSentinel ? files.sentinelMissing : files.missing) throw new Error('ENOENT')
     return { value: { kind: 'file', size: 900, mtimeMs: files.mtimeMs, isLink: false, resolve: false } }
   }) as never
   on('ui.toast', (_, e) => {
@@ -159,6 +164,38 @@ test('2e: a marker naming a file outside .tmp arms nothing', async ($, on) => {
   expect(w.ran).toEqual([])
 })
 
+for (const [name, out] of [
+  ['no sentinel line', `clear-handoff armed: ${PATH}\n`],
+  ['a sentinel outside the pending dir', `clear-handoff armed: ${PATH}\nclear-handoff sentinel: /tmp/x.path\n`],
+] as const) {
+  test(`2f: ${name} arms nothing`, async ($, on) => {
+    const w = world(on)
+    w.bash.out = out
+    await armedTurn($)
+    await $.turn.complete(ended())
+    await settle(w)
+    expect(w.ran).toEqual([])
+  })
+}
+
+test('2g: a sentinel that is missing or names another handoff arms nothing', async ($, on) => {
+  const w = world(on)
+  w.files.sentinelMissing = true
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
+test('2h: a sentinel naming a different handoff arms nothing', async ($, on) => {
+  const w = world(on)
+  w.files.sentinelText = '/repo/.tmp/other.md'
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
 test('2c: a marker path that is not a .md file arms nothing', async ($, on) => {
   const w = world(on)
   w.bash.out = 'clear-handoff armed: /x then do Y\n'
@@ -198,7 +235,8 @@ test('5: a relative path does not arm', async ($, on) => {
 test('6: the last marker line wins, spaces kept', async ($, on) => {
   const w = world(on)
   const spaced = '/Users/x/My Repo/.tmp/a b.md'
-  w.bash.out = `clear-handoff armed: /r/.tmp/old.md\nnoise\nclear-handoff armed: ${spaced}\n`
+  w.bash.out = `clear-handoff armed: /r/.tmp/old.md\nnoise\nclear-handoff armed: ${spaced}\nclear-handoff sentinel: ${SENTINEL}\n`
+  w.files.sentinelText = spaced
   await launched($, w)
   expect(w.submitted).toEqual([`Resume from ${spaced}`])
 })
