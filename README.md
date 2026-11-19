@@ -93,6 +93,15 @@ Background subagents keep running across the clear, so the plugin does not wait 
 
 The approach comes from [cc-build-handoff](https://github.com/seanperkins/cc-build-handoff) by Sean Perkins, which automated the same two steps for a build handoff.
 
+## Develop
+
+```
+claude --plugin-dir ~/git/oss/cc-clear-handoff   # a session with this working copy loaded
+claude plugin validate .                          # manifest, command and hook module
+claude plugin test .                              # the mod's tests (hooks/register.test.ts)
+python3 -m unittest discover -s tests             # the loader's tests
+```
+
 ## Files
 
 ```

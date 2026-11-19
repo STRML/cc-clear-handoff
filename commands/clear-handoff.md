@@ -1,6 +1,6 @@
 ---
-description: Save a focused handoff file for resuming this exact work in a fresh session, and arm a one-shot SessionStart hook that auto-loads it after /clear — a precise, un-loseable alternative to the lossy /compact. Safe to run while subagents are working.
-argument-hint: "[optional: what the next session should focus on]"
+description: Save a focused handoff file, then clear this session and resume from the handoff by itself (or arm it for a manual /clear). A precise, un-loseable alternative to the lossy /compact. Safe to run while subagents are working.
+argument-hint: "[optional: what the next session should do, e.g. build it]"
 allowed-tools: Bash, Read, TaskList, TaskGet, Write
 ---
 

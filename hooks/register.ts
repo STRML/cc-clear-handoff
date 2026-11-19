@@ -18,7 +18,7 @@ const LAUNCH_WINDOW_MS = 2 * 60 * 1000
 const SENTINEL_TTL_MS = 24 * 60 * 60 * 1000
 // Filesystems that keep whole-second mtimes round a fresh write down.
 const MTIME_SLACK_MS = 1000
-const CANCELLED = 'clear-handoff: you sent a prompt, so not clearing. Run /clear when ready.'
+const CANCELLED = 'clear-handoff: something new came in (your prompt, a /clear, or a notification turn), so not clearing. Run /clear when ready.'
 const BY_HAND = 'Run /clear by hand when ready.'
 const REARM = 'Run /clear-handoff again to save and arm it.'
 // Origins that carry the session owner's own words.
