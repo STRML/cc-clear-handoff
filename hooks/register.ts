@@ -12,6 +12,7 @@ import type { Hook, Register } from 'claude-code'
 const ARMED_MARKER = 'clear-handoff armed: '
 const ARM_STEP = 'pending-handoffs'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
+const MTIME_SLACK_MS = 1000
 const CANCELLED = 'clear-handoff: you sent a prompt, so not clearing. Run /clear when ready; the handoff still loads.'
 const BY_HAND = 'clear-handoff: not auto-clearing. Run /clear by hand; the handoff still loads.'
 // Origins that carry the session owner's own words.
@@ -21,6 +22,7 @@ type Api = Parameters<Hook<'session.start'>>[0]
 type Origin = { kind: string; name?: string }
 
 let currentTurn: string | undefined
+let turnStartedAt = 0
 let armedPath: string | undefined
 let armedTurn: string | undefined
 let inFlight = false
@@ -32,13 +34,15 @@ let pendingStart: string | undefined
 function armedPathFrom(text: string | undefined): string | undefined {
   const lines = (text ?? '').split('\n').filter(l => l.startsWith(ARMED_MARKER))
   const path = lines.at(-1)?.slice(ARMED_MARKER.length).trim()
-  return path?.startsWith('/') && path.endsWith('.md') ? path : undefined
+  return path?.startsWith('/') && path.includes('/.tmp/') && path.endsWith('.md') ? path : undefined
 }
 
-async function isHandoffFile($: Api, path: string): Promise<boolean> {
+// The handoff must be a non-empty file written during this turn: an old file
+// at the same path, or any other file the marker names, never arms a /clear.
+async function isFreshHandoff($: Api, path: string): Promise<boolean> {
   try {
     const stat = await $.fs.stat(path)
-    return stat.kind === 'file' && stat.size > 0
+    return stat.kind === 'file' && stat.size > 0 && stat.mtimeMs >= turnStartedAt - MTIME_SLACK_MS
   } catch {
     return false
   }
@@ -125,11 +129,9 @@ export const register: Register = on => {
     if (e.agentId || !e.command.includes(ARM_STEP)) return ran
     const failed = ran.deny !== undefined || ran.isError === true
     const path = failed ? undefined : armedPathFrom(ran.text)
-    if (!path || !(await isHandoffFile($, path))) {
-      if (armedPath && !inFlight) {
-        disarm()
-        $.ui.toast('clear-handoff: arming failed, so nothing will auto-clear.')
-      }
+    if (!path || !(await isFreshHandoff($, path))) {
+      if (!inFlight) disarm()
+      $.ui.toast(`clear-handoff: no handoff file written this turn, so nothing will auto-clear. ${BY_HAND}`)
       return ran
     }
     if (currentTurn === undefined) {
@@ -147,8 +149,9 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('turn.start', ($, e, next) => {
+  on('turn.start', async ($, e, next) => {
     currentTurn = e.turnId
+    turnStartedAt = await $.clock.now()
     if (armedPath && armedTurn !== e.turnId) disarm()
     if (inFlight) abortLaunch = true
     return next(e)

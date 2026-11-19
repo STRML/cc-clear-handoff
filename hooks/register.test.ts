@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 const PATH = '/repo/.tmp/auto-clear-resume-20261119-010000.md'
+const NOW = 1_000_000
 const ARM = `HF="${PATH}"; printf '%s' "$HF" > ~/.claude/tmp/pending-handoffs/x.path && echo "clear-handoff armed: $HF"`
 
 // The engine beneath the mod: a clock, a Bash tool whose output we set, slash
@@ -15,9 +16,9 @@ function world(on: On, opts: { box?: string } = {}) {
   const bash = { out: `clear-handoff armed: ${PATH}\n`, fails: false, denied: false }
   const refuse = { plugin: undefined as string | undefined }
   const clear = { rejects: false }
-  const files = { missing: false }
+  const files = { missing: false, mtimeMs: NOW + 1 }
   const box = { fills: true }
-  const clock = mock.clock(on, { now: 1_000_000 })
+  const clock = mock.clock(on, { now: NOW })
   on('session.id', () => ({ value: 'plan-1' }))
   on('prompt.read', () => ({ value: { text: opts.box ?? '', cursor: 0 } }))
   on('prompt.fill', (_, e) => {
@@ -27,7 +28,7 @@ function world(on: On, opts: { box?: string } = {}) {
   })
   on('fs.stat', () => {
     if (files.missing) throw new Error('ENOENT')
-    return { value: { kind: 'file', size: 900, mtimeMs: 0, isLink: false, resolve: false } }
+    return { value: { kind: 'file', size: 900, mtimeMs: files.mtimeMs, isLink: false, resolve: false } }
   }) as never
   on('ui.toast', (_, e) => {
     toasts.push(String((e as { text?: string }).text ?? e))
@@ -139,6 +140,25 @@ test('2b: a marker naming a handoff file that does not exist arms nothing', asyn
   expect(w.ran).toEqual([])
 })
 
+test('2d: a handoff file older than this turn arms nothing', async ($, on) => {
+  const w = world(on)
+  w.files.mtimeMs = NOW - 60_000
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+  expect(w.toasts.some(t => t.includes('no handoff file written this turn'))).toBe(true)
+})
+
+test('2e: a marker naming a file outside .tmp arms nothing', async ($, on) => {
+  const w = world(on)
+  w.bash.out = 'clear-handoff armed: /repo/README.md\n'
+  await armedTurn($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})
+
 test('2c: a marker path that is not a .md file arms nothing', async ($, on) => {
   const w = world(on)
   w.bash.out = 'clear-handoff armed: /x then do Y\n'
@@ -178,7 +198,7 @@ test('5: a relative path does not arm', async ($, on) => {
 test('6: the last marker line wins, spaces kept', async ($, on) => {
   const w = world(on)
   const spaced = '/Users/x/My Repo/.tmp/a b.md'
-  w.bash.out = `clear-handoff armed: /old.md\nnoise\nclear-handoff armed: ${spaced}\n`
+  w.bash.out = `clear-handoff armed: /r/.tmp/old.md\nnoise\nclear-handoff armed: ${spaced}\n`
   await launched($, w)
   expect(w.submitted).toEqual([`Resume from ${spaced}`])
 })
