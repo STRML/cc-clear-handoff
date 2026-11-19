@@ -663,3 +663,24 @@ test('Q4: a turn that starts while the question is open still cancels the clear'
   await settle(w)
   expect(w.ran).toEqual([])
 })
+
+test('N3: "don\'t clear the cache first" is a directive, so the question still comes', async ($, on) => {
+  const w = world(on)
+  await $.prompt.submit({ ...handoffCommand('handoff'), command: { name: 'handoff', args: "build it, don't clear the cache first" } })
+  await $.turn.start({ text: '/handoff', turnId: 't1' })
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ask.asked).toBe(1)
+  expect(w.ran).toEqual(['clear'])
+})
+
+test('Q5: a sentinel consumed while the question is open does not clear', async ($, on) => {
+  const w = world(on)
+  await handoffTurn($)
+  await $.turn.complete(ended())
+  w.disk.sentinelMissing = true
+  await settle(w)
+  expect(w.ran).toEqual([])
+  expect(w.toasts.some(t => t.includes('no longer armed'))).toBe(true)
+})

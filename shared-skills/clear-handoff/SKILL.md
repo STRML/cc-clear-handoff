@@ -16,8 +16,9 @@ Harness differences:
 
 - **Claude Code** with the cc-clear-handoff plugin: the plugin's `/clear-handoff` command
   runs this procedure and clears the session by itself. Prefer the command there.
-- **Any other harness** (OMP, Codex): run the same steps, including the arm step (it is
-  harmless where no loader reads it). Nothing clears or resumes by itself. End with:
+- **Any other harness** (OMP, Codex): run the same steps, including the arm step: the next
+  Claude Code session started in this folder within 24 hours loads the handoff, and a resume
+  anywhere else removes the sentinel first (the handoff's own resume line says how). Nothing clears or resumes by itself. End with:
 
   > Handoff saved → `<absolute-handoff-path>`
   > Start a fresh session (`/new` or `/clear`) and send: **`Resume from <absolute-handoff-path>`**

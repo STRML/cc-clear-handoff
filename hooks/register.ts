@@ -14,7 +14,7 @@ import type { Hook, Register } from 'claude-code'
 const COMMANDS = ['clear-handoff', 'handoff']
 // "/handoff don't clear": save and arm, but leave the session as it is (handing
 // off to another account or harness).
-const NO_CLEAR = /(^|[\s,;:])(--no-clear|no[\s-]clear|don'?t[\s-]clear|do not clear)\b/i
+const NO_CLEAR = /(^|[\s,;:])(--no-clear|no[\s-]clear|don'?t[\s-]clear|do not clear)\s*([,;:.!]|$)/i
 const SENTINEL_DIR = '/.claude/tmp/pending-handoffs/'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
 // The loader drops sentinels older than this (clear-handoff-load.py TTL).
@@ -24,8 +24,8 @@ const MTIME_SLACK_MS = 1000
 const CANCELLED = 'clear-handoff: something new came in (your prompt, a /clear, or a notification turn), so not clearing. Run /clear when ready.'
 const BY_HAND = 'Run /clear by hand when ready.'
 const REARM = 'Run /clear-handoff again to save and arm it.'
-export const CLEAR_NOW = 'Clear and resume now'
-export const WAIT = 'Wait'
+const CLEAR_NOW = 'Clear and resume now'
+const WAIT = 'Wait'
 // Origins that carry the session owner's own words.
 const PERSON_KINDS = new Set(['composer', 'bridge', 'sdk', 'slack-ping', 'channel'])
 
@@ -108,6 +108,12 @@ async function wantsClearNow($: Api): Promise<boolean> {
 async function clearNow($: Api, path: string): Promise<void> {
   if (!(await wantsClearNow($))) {
     $.ui.toast(`clear-handoff: not clearing. ${BY_HAND}`)
+    return
+  }
+  // The dialog has no timeout: the sentinel may have been consumed or expired
+  // while it was open.
+  if (!(await armedOnDisk($, path))) {
+    $.ui.toast(`clear-handoff: the handoff is no longer armed, so not clearing. ${REARM}`)
     return
   }
   const at = await $.clock.now()

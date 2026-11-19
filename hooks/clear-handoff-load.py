@@ -146,7 +146,7 @@ def main():
     topic_suffix = f": {topic}" if topic else ""
     banner = (
         f"📋 Handoff loaded ({age_str}){topic_suffix}. "
-        f"Say 'resume' if it does not pick up by itself.\n   {handoff_path}"
+        f"Say 'resume' to pick up where you left off.\n   {handoff_path}"
     )
     recap_line = (
         f'open with a one-line recap naming what we were working on'
