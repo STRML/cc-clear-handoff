@@ -57,6 +57,8 @@ When context is getting long, instead of `/compact`:
 /clear-handoff
 ```
 
+`/handoff` is an alias for the same command.
+
 Add an instruction for the next session after the command. It goes into the handoff as its `## Directive`, and the fresh session carries it out first:
 
 ```
@@ -94,6 +96,7 @@ The approach comes from [cc-build-handoff](https://github.com/seanperkins/cc-bui
 ```
 cc-clear-handoff/
 ├── commands/clear-handoff.md      the /clear-handoff command
+├── commands/handoff.md            /handoff, an alias for it
 ├── hooks/clear-handoff-load.py    SessionStart auto-loader (one-shot, cwd-scoped)
 ├── hooks/register.ts              function hooks: auto /clear and resume prompt
 ├── hooks/register.test.ts         its tests (claude plugin test .)
