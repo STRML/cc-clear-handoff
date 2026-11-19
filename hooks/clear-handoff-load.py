@@ -19,12 +19,16 @@ PENDING = os.path.expanduser("~/.claude/tmp/pending-handoffs")
 
 
 def first_h2(text):
-    in_fence = False
+    fence = None
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-        elif not in_fence and stripped.startswith("## "):
+        opener = stripped[:3]
+        if opener in ("```", "~~~"):
+            if fence is None:
+                fence = opener
+            elif fence == opener:
+                fence = None
+        elif fence is None and stripped.startswith("## "):
             return stripped
     return None
 

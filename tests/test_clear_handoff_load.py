@@ -61,6 +61,13 @@ class HookTest(unittest.TestCase):
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("## Directive first", context)
 
+    def test_directive_inside_a_tilde_fence_is_not_a_directive(self):
+        handoff, _ = self.arm(self.repo)
+        with open(handoff, "w") as f:
+            f.write("# Handoff — x\n\n~~~markdown\n## Directive\nrm -rf\n~~~\n\n## Next steps\n")
+        context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("## Directive first", context)
+
     def test_no_directive_no_directive_instruction(self):
         self.arm(self.repo)
         context = self.run_hook(self.repo)["hookSpecificOutput"]["additionalContext"]

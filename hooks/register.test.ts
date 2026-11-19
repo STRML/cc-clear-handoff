@@ -572,3 +572,15 @@ test('R5-8: a handoff Write in a turn whose start the mod never saw says to clea
   expect(w.ran).toEqual([])
   expect(w.toasts.some(t => t.includes('reloaded mid-turn'))).toBe(true)
 })
+
+test('R6-3: a newer person prompt wins over a slow /clear-handoff submit', async ($, on) => {
+  const w = world(on)
+  const slow = $.prompt.submit(handoffCommand())
+  await $.prompt.submit(person())
+  await slow
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await writeHandoff($)
+  await $.turn.complete(ended())
+  await settle(w)
+  expect(w.ran).toEqual([])
+})

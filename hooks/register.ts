@@ -28,6 +28,7 @@ type Api = Parameters<Hook<'session.start'>>[0]
 type Origin = { kind: string; name?: string }
 
 let intentPending = false
+let submitSeq = 0
 let sawTurnStart = false
 let strayHandoffWrite = false
 let intentTurn: string | undefined
@@ -125,9 +126,12 @@ async function offerResume($: Api, text: string, reason: string): Promise<void> 
 
 async function startResume($: Api): Promise<void> {
   const text = pendingStart
-  pendingStart = undefined
   if (text === undefined) return
-  if ((await $.prompt.read()).text.trim() !== '') {
+  const draft = (await $.prompt.read()).text.trim()
+  // A person's prompt during the read cancels by clearing pendingStart.
+  if (pendingStart !== text) return
+  pendingStart = undefined
+  if (draft !== '') {
     $.ui.toast(`clear-handoff: you have a draft, so the resume prompt was not sent. The handoff is in context; send "${text}" when ready.`)
     return
   }
@@ -157,9 +161,11 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (!isPerson(e.origin)) return next(e)
     const startsHandoff = !!e.command && isHandoffCommand($, e.command.name)
+    const seq = ++submitSeq
     personSpoke($, false)
     const out = await next(e)
-    if (startsHandoff && out.drop === undefined) intentPending = true
+    // Only the newest submission may set intent; a later prompt supersedes it.
+    if (startsHandoff && out.drop === undefined && seq === submitSeq) intentPending = true
     return out
   })
 
