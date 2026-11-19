@@ -80,10 +80,9 @@ You **always** save the handoff to a file and arm the SessionStart auto-loader �
    HF="<absolute-handoff-path>"
    ENC=$(python3 -c "import re,os;print(re.sub(r'[/.]','-',os.path.realpath(os.getcwd())).strip('-'))")
    mkdir -p ~/.claude/tmp/pending-handoffs
-   S=~/.claude/tmp/pending-handoffs/$ENC.path
-   test -s "$HF" && printf '%s' "$HF" > "$S" && echo "clear-handoff armed: $HF" && echo "clear-handoff sentinel: $S"
+   test -s "$HF" && printf '%s' "$HF" > ~/.claude/tmp/pending-handoffs/$ENC.path
    ```
-   Keep the `test -s` and both `echo` lines exactly as written, in the same Bash call. The plugin reads the sentinel back and arms only when it was written this turn and names this handoff, which must also have been written this turn under `.tmp/`. A failed Write or arm step never clears the session. The `clear-handoff armed: <path>` line tells the plugin's mod to run `/clear` and send `Resume from <path>` as soon as this turn ends.
+   Run it from the session's launch directory. The plugin clears the session by itself only when you wrote the handoff with the `Write` tool in this turn, under `.tmp/`, and this sentinel (named for the launch directory) holds exactly its path. Otherwise it tells the user to run `/clear` by hand, and the handoff still loads.
    The hook only consumes this on a `clear`/`startup` SessionStart in the directory you armed it in, or in a parent of it inside the same git repo (so a shell that drifted into a subdirectory or `.claude/worktrees/<name>` still hands off to the launch dir), and it expires after 24h — so arm it right before you `/clear`, not hours ahead.
 
 Then print **only a very short prompt** — nothing else, no inline dump. Exactly:

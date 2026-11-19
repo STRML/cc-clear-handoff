@@ -71,14 +71,14 @@ You don't run `/clear` yourself. When the turn that saved the handoff ends, the 
 ## Hands-free clear and resume
 
 ```
-/clear-handoff turn                       fresh session
-───────────────────                       ─────────────
-arm step prints                           clear-handoff-load.py injects
-"clear-handoff armed: <path>"  ─▶ armed     the handoff (as before)
-turn ends with an answer       ─▶ /clear ─▶ plugin sends "Resume from <path>"
+you type /clear-handoff ─▶ this turn may clear       fresh session
+Write .tmp/<name>.md ok   ─▶ handoff = that path      ─────────────
+arm step writes sentinel                             clear-handoff-load.py injects
+turn ends with an answer                               the handoff (as before)
+  handoff non-empty, sentinel new + names it ─▶ /clear ─▶ plugin sends "Resume from <path>"
 ```
 
-A function-hook module (`hooks/register.ts`) does the two keypresses. Anything you do yourself wins over it:
+A function-hook module (`hooks/register.ts`) does the two keypresses. It decides from what it can observe, never from the model's text: your command, the `Write` tool's own result, and the files on disk at the moment of the clear. When any check fails it says so and leaves the `/clear` to you. Anything you do yourself wins over it:
 
 | You do this | The plugin |
 |---|---|

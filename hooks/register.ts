@@ -1,76 +1,76 @@
 import type { Hook, Register } from 'claude-code'
 
-// Hands-free /clear-handoff: when the turn that armed a handoff ends with an
-// answer, run /clear and start the fresh session with "Resume from <path>".
-// The SessionStart command hook (clear-handoff-load.py) still injects the
-// handoff; this module only removes the two keypresses around it.
+// Hands-free /clear-handoff: when the turn that the person started with
+// /clear-handoff (or /handoff) ends with an answer, and the handoff it wrote is
+// armed exactly where the loader looks, run /clear and start the fresh session
+// with "Resume from <path>". The SessionStart command hook
+// (clear-handoff-load.py) still injects the handoff.
 //
-// State lives in module memory: the launch and the /clear it runs happen in
-// this one process. A reload drops it, and a manual /clear still loads the
-// handoff through the sentinel.
+// Arming is verified from observed facts only, never from the model's text:
+// the person's command, the Write tool's own result, and the files on disk at
+// the moment of the clear. State lives in module memory; a reload drops it and
+// a manual /clear still loads the handoff.
 
-const ARMED_MARKER = 'clear-handoff armed: '
-const SENTINEL_MARKER = 'clear-handoff sentinel: '
+const COMMAND = /(^|:)(clear-)?handoff$/
 const SENTINEL_DIR = '/.claude/tmp/pending-handoffs/'
-const ARM_STEP = 'pending-handoffs'
 const LAUNCH_WINDOW_MS = 2 * 60 * 1000
-const MTIME_SLACK_MS = 1000
 const CANCELLED = 'clear-handoff: you sent a prompt, so not clearing. Run /clear when ready; the handoff still loads.'
-const BY_HAND = 'clear-handoff: not auto-clearing. Run /clear by hand; the handoff still loads.'
+const BY_HAND = 'Run /clear by hand; the handoff still loads.'
 // Origins that carry the session owner's own words.
 const PERSON_KINDS = new Set(['composer', 'bridge', 'sdk', 'slack-ping', 'channel'])
 
 type Api = Parameters<Hook<'session.start'>>[0]
 type Origin = { kind: string; name?: string }
 
-let currentTurn: string | undefined
-let turnStartedAt = 0
-let armedPath: string | undefined
-let armedTurn: string | undefined
+let intentPending = false
+let intentTurn: string | undefined
+let intentStartedAt = 0
+let writtenPath: string | undefined
 let inFlight = false
 let abortLaunch = false
 let launching: { path: string; at: number } | undefined
 let foreignClear = false
 let pendingStart: string | undefined
 
-function lastValue(text: string, marker: string): string | undefined {
-  const lines = text.split('\n').filter(l => l.startsWith(marker))
-  return lines.at(-1)?.slice(marker.length).trim()
+const isPerson = (origin: Origin) => PERSON_KINDS.has(origin.kind)
+const isOurs = ($: Api, origin: Origin) => origin.kind === 'plugin' && origin.name === $.plugin.name
+
+// A file directly inside a `.tmp` directory, absolute, no `..` segment.
+function isHandoffPath(path: string | undefined): path is string {
+  if (!path || !path.startsWith('/') || !path.endsWith('.md')) return false
+  const parts = path.split('/')
+  return !parts.includes('..') && parts.at(-2) === '.tmp'
 }
 
-function armedPathFrom(text: string | undefined): string | undefined {
-  const path = lastValue(text ?? '', ARMED_MARKER)
-  return path?.startsWith('/') && path.includes('/.tmp/') && path.endsWith('.md') ? path : undefined
-}
-
-async function freshFile($: Api, path: string): Promise<boolean> {
-  const stat = await $.fs.stat(path)
-  return stat.kind === 'file' && stat.size > 0 && stat.mtimeMs >= turnStartedAt - MTIME_SLACK_MS
-}
-
-// Arm only on what the loader will consume: a sentinel in the pending dir,
-// written this turn, naming exactly this handoff, which was also written this
-// turn. The echoed lines are the model's; the files are the proof.
-async function isArmedOnDisk($: Api, path: string, text: string): Promise<boolean> {
-  const sentinel = lastValue(text, SENTINEL_MARKER)
+// The sentinel name the loader tries first: realpath(session cwd) with every
+// `/` and `.` turned into `-`, outer dashes stripped (clear-handoff-load.py).
+async function sentinelPath($: Api): Promise<string | undefined> {
   const home = await $.env.get('HOME')
-  if (!sentinel || !home || sentinel.includes('..')) return false
-  if (!sentinel.startsWith(home + SENTINEL_DIR) || !sentinel.endsWith('.path')) return false
+  const cwd = await $.session.cwd()
+  const real = (await $.fs.stat(cwd, { resolve: true })).realPath ?? cwd
+  if (!home) return undefined
+  return `${home}${SENTINEL_DIR}${real.replace(/[/.]/g, '-').replace(/^-+|-+$/g, '')}.path`
+}
+
+// What the loader will inject after the clear: the sentinel for this session,
+// rewritten this turn, naming this handoff, which is a non-empty file.
+async function armedOnDisk($: Api, path: string): Promise<boolean> {
   try {
-    if (!(await freshFile($, sentinel)) || !(await freshFile($, path))) return false
+    const sentinel = await sentinelPath($)
+    if (!sentinel) return false
+    const [handoff, mark] = [await $.fs.stat(path), await $.fs.stat(sentinel)]
+    if (handoff.kind !== 'file' || handoff.size === 0) return false
+    if (mark.kind !== 'file' || mark.mtimeMs < intentStartedAt) return false
     return (await $.fs.read(sentinel)).trim() === path
   } catch {
     return false
   }
 }
 
-const resumeMessage = (path: string) => `Resume from ${path}`
-const isPerson = (origin: Origin) => PERSON_KINDS.has(origin.kind)
-const isOurs = ($: Api, origin: Origin) => origin.kind === 'plugin' && origin.name === $.plugin.name
-
-function disarm(): void {
-  armedPath = undefined
-  armedTurn = undefined
+function forgetIntent(): void {
+  intentPending = false
+  intentTurn = undefined
+  writtenPath = undefined
 }
 
 async function clearNow($: Api, path: string): Promise<void> {
@@ -94,10 +94,9 @@ function launch($: Api, path: string): void {
   inFlight = true
   abortLaunch = false
   foreignClear = false
-  disarm()
   $.clock.after(0, () => {
     clearNow($, path)
-      .catch(err => $.ui.toast(`clear-handoff: auto-clear failed (${String(err)}). Run /clear; the handoff still loads.`))
+      .catch(err => $.ui.toast(`clear-handoff: auto-clear failed (${String(err)}). ${BY_HAND}`))
       .finally(() => {
         inFlight = false
       })
@@ -127,64 +126,62 @@ async function startResume($: Api): Promise<void> {
   if (refused !== undefined) await offerResume($, text, refused)
 }
 
-function personSpoke($: Api): void {
+function personSpoke($: Api, startsHandoff: boolean): void {
   if (pendingStart !== undefined) {
     pendingStart = undefined
     $.ui.toast('clear-handoff: you typed first, so the resume prompt was not sent. The handoff is in context.')
   }
-  if (armedPath) {
-    disarm()
+  if (intentTurn !== undefined) {
+    forgetIntent()
     $.ui.toast(CANCELLED)
   }
   if (inFlight || launching) abortLaunch = true
+  if (startsHandoff) intentPending = true
 }
 
 export const register: Register = on => {
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const ran = await next(e)
-    if (e.agentId || !e.command.includes(ARM_STEP)) return ran
-    const failed = ran.deny !== undefined || ran.isError === true
-    const path = failed ? undefined : armedPathFrom(ran.text)
-    if (!path || !(await isArmedOnDisk($, path, ran.text ?? ''))) {
-      if (!inFlight) disarm()
-      $.ui.toast(`clear-handoff: no handoff file written this turn, so nothing will auto-clear. ${BY_HAND}`)
-      return ran
-    }
-    if (currentTurn === undefined) {
-      $.ui.toast(`clear-handoff: loaded mid-turn. ${BY_HAND}`)
-      return ran
-    }
-    armedPath = path
-    armedTurn = currentTurn
-    $.ui.toast('Handoff armed. This session clears when the turn ends. Send a prompt or press Esc before then to stop it.')
-    return ran
-  })
-
   on('prompt.submit', ($, e, next) => {
-    if (isPerson(e.origin)) personSpoke($)
+    if (isPerson(e.origin)) personSpoke($, !!e.command && COMMAND.test(e.command.name))
     return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
-    currentTurn = e.turnId
-    turnStartedAt = await $.clock.now()
-    if (armedPath && armedTurn !== e.turnId) disarm()
+    if (intentPending) {
+      intentPending = false
+      intentTurn = e.turnId
+      intentStartedAt = await $.clock.now()
+      writtenPath = undefined
+    } else if (intentTurn !== e.turnId) {
+      forgetIntent()
+    }
     if (inFlight) abortLaunch = true
     return next(e)
   })
 
+  on('tool.call', { tool: 'Write' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (e.agentId || intentTurn === undefined || !isHandoffPath(e.file_path)) return ran
+    const ok = ran.deny === undefined && ran.isError !== true
+    if (ok) writtenPath = e.file_path
+    else if (writtenPath === e.file_path) writtenPath = undefined
+    return ran
+  })
+
   on('turn.complete', async ($, e, next) => {
     const out = await next(e)
-    if (e.agentId || !armedPath || e.turnId !== armedTurn) return out
-    const path = armedPath
+    if (e.agentId || intentTurn === undefined || e.turnId !== intentTurn) return out
+    const path = writtenPath
+    forgetIntent()
     if (inFlight) {
-      disarm()
       $.ui.toast(`clear-handoff: an earlier clear is still queued. ${BY_HAND}`)
       return out
     }
     if (e.reason !== 'answer') {
-      disarm()
-      $.ui.toast(`clear-handoff: turn ended (${e.reason}), so not clearing. Run /clear when ready.`)
+      $.ui.toast(`clear-handoff: turn ended (${e.reason}), so not clearing. ${BY_HAND}`)
+      return out
+    }
+    if (!path || !(await armedOnDisk($, path))) {
+      $.ui.toast(`clear-handoff: no handoff armed for this session, so nothing will auto-clear. ${BY_HAND}`)
       return out
     }
     launch($, path)
@@ -195,7 +192,7 @@ export const register: Register = on => {
   // already run and reset `launching`.
   on('command.run', { command: 'clear' }, async ($, e, next) => {
     if (isPerson(e.origin)) {
-      disarm()
+      forgetIntent()
       if (inFlight || launching) abortLaunch = true
       launching = undefined
       pendingStart = undefined
@@ -230,7 +227,7 @@ export const register: Register = on => {
       $.ui.toast('clear-handoff: a prompt came in during the clear, so the resume prompt was not sent.')
       return out
     }
-    pendingStart = resumeMessage(path)
+    pendingStart = `Resume from ${path}`
     // initialUserMessage does not start a turn after /clear; submit once idle.
     $.clock.after(0, () => {
       startResume($).catch(err =>
