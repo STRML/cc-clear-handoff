@@ -19,7 +19,7 @@ You are producing a **handoff**: a curated file capturing exactly what a fresh s
 
 Run only what's relevant to this session:
 
-- Running/recent subagents: `TaskList` — record each agent's id, status, job, and where its output lands. Running ones keep going across `/clear`. **Do not stop them.**
+- Subagents: the agents this conversation launched (their ids are in the Agent results) — record each one's id, status, job, and where its output lands. Running ones keep going across `/clear`. **Do not stop them.**
 - Repo state (if in a git repo): current branch, `git rev-parse --short HEAD`, `git status --porcelain`, and open PRs if relevant (`gh pr list --author @me` per the resume-notes convention).
 - Any plan file, scratchpad, or codemaps in play — reference by path.
 
