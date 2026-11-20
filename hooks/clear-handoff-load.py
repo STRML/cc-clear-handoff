@@ -164,13 +164,11 @@ def main():
         "has been auto-loaded below. On the user's next message — even a bare "
         f"'resume'/'go' — {recap_line}{first_move}: act on them, don't re-summarize "
         "the whole handoff back. Read any "
-        "referenced files before acting. NOTE: any subagents listed in the handoff "
-        "belonged to the PREVIOUS session. Their old Task IDs do NOT survive /clear "
-        "(SendMessage rejects session-qualified ids and `claude agents --json` is "
-        "empty), so don't drive them by id. A background subagent MAY still be alive "
-        "and reachable by its bare name via SendMessage, but don't depend on it — the "
-        "reply can lag minutes and it may have already exited. The reliable move is to "
-        "check the outputs the handoff says they were producing (files, branches, PRs)."
+        "referenced files before acting. NOTE: background subagents listed in the "
+        "handoff keep running across /clear under their original IDs: their "
+        "notifications arrive in this session and SendMessage reaches them. Do not "
+        "treat them as dead or redo their work. Check TaskList, and read the outputs "
+        "the handoff names (files, branches, PRs) for any that already finished."
         f"\n\n--- HANDOFF ({handoff_path}) ---\n{handoff}"
     )
     print(json.dumps({
