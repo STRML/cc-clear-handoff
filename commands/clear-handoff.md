@@ -19,7 +19,7 @@ You are producing a **handoff**: a curated file capturing exactly what a fresh s
 
 Run only what's relevant to this session:
 
-- Running/recent subagents: `TaskList` — record each agent's id, job, and where its output lands. They keep running across `/clear`. **Do not stop them.**
+- Running/recent subagents: `TaskList` — record each agent's id, status, job, and where its output lands. Running ones keep going across `/clear`. **Do not stop them.**
 - Repo state (if in a git repo): current branch, `git rev-parse --short HEAD`, `git status --porcelain`, and open PRs if relevant (`gh pr list --author @me` per the resume-notes convention).
 - Any plan file, scratchpad, or codemaps in play — reference by path.
 
@@ -39,7 +39,7 @@ Build the handoff content using the template below. Fill in only the sections th
 <2–4 sentences: what's done, what's in progress right now, what's blocked.>
 
 ## Running subagents
-- `<task-id>` <agent type> — <what it's doing> — output lands in <file / branch / PR>
+- `<task-id>` <agent type> — <running/done/failed> — <what it's doing> — output lands in <file / branch / PR>
 <omit section if none>
 
 ## Key files & locations

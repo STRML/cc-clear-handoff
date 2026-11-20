@@ -164,8 +164,8 @@ def main():
         "has been auto-loaded below. On the user's next message — even a bare "
         f"'resume'/'go' — {recap_line}{first_move}: act on them, don't re-summarize "
         "the whole handoff back. Read any "
-        "referenced files before acting. Subagents in the handoff are still running "
-        "under the same IDs; don't redo their work."
+        "referenced files before acting. Subagents the handoff marks running may "
+        "still be alive under the same IDs (check TaskList) before redoing their work."
         f"\n\n--- HANDOFF ({handoff_path}) ---\n{handoff}"
     )
     print(json.dumps({
