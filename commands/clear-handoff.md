@@ -38,7 +38,7 @@ Build the handoff content using the template below. Fill in only the sections th
 ## Where we are
 <2–4 sentences: what's done, what's in progress right now, what's blocked.>
 
-## Running subagents
+## Subagents
 - `<task-id>` <agent type> — <running/done/failed> — <what it's doing> — output lands in <file / branch / PR>
 <omit section if none>
 
