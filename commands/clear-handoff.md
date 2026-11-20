@@ -19,7 +19,7 @@ You are producing a **handoff**: a curated file capturing exactly what a fresh s
 
 Run only what's relevant to this session:
 
-- Running/recent subagents: `TaskList` — record each agent's job, status, and **where its output lands** (file/branch/PR). Old Task IDs don't survive `/clear`, so capture the output location, not just the id. (A background subagent may still answer a bare-name `SendMessage` after `/clear`, but it's unreliable — the output location is what the next session should trust.) **Do not stop them.**
+- Subagents: the agents this conversation launched (their ids are in the Agent results) — record each one's id, status, job, and where its output lands. Running ones keep going across `/clear`. **Do not stop them.**
 - Repo state (if in a git repo): current branch, `git rev-parse --short HEAD`, `git status --porcelain`, and open PRs if relevant (`gh pr list --author @me` per the resume-notes convention).
 - Any plan file, scratchpad, or codemaps in play — reference by path.
 
@@ -38,10 +38,9 @@ Build the handoff content using the template below. Fill in only the sections th
 ## Where we are
 <2–4 sentences: what's done, what's in progress right now, what's blocked.>
 
-## Running subagents (drive via output, not old IDs)
-- <agent type> — <what it's doing> — output lands in <file / branch / PR>. Old id `<task-id>` is dead after `/clear`; check the output instead.
+## Subagents
+- `<task-id>` <agent type> — <running/done/failed> — <what it's doing> — output lands in <file / branch / PR>
 <omit section if none>
-<record what each was DOING and WHERE its result lands, not just the id — old Task IDs don't route after /clear. A background subagent may still reply to a bare-name SendMessage, but don't rely on it; trust the output location.>
 
 ## Key files & locations
 - `path/to/file.ts:NN` — <why it matters>

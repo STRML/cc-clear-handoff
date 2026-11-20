@@ -27,7 +27,7 @@ The usual "context is getting long" options both hurt:
 4. print a 2-line fallback prompt
 ```
 
-The command is a prompt injection, so it runs **at any moment — even while subagents are still working** — and it never stops or blocks on them. It records what each subagent was doing and *where its output lands*, since old Task IDs don't survive a `/clear`.
+The command is a prompt injection, so it runs **at any moment — even while subagents are still working** — and it never stops or blocks on them. It records what each subagent was doing and *where its output lands*, so the fresh session can pick them up (they survive `/clear`).
 
 ### Design details worth knowing
 
