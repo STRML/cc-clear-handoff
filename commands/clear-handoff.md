@@ -19,7 +19,7 @@ You are producing a **handoff**: a curated file capturing exactly what a fresh s
 
 Run only what's relevant to this session:
 
-- Running/recent subagents: `TaskList` — record each agent's job, status, and **where its output lands** (file/branch/PR). Background subagents keep running across `/clear` under the same IDs: their notifications reach the fresh session and `SendMessage` still works. Record the id too, so the next session can drive them instead of redoing their work. **Do not stop them.**
+- Running/recent subagents: `TaskList` — record each agent's id, job, and where its output lands. They keep running across `/clear`. **Do not stop them.**
 - Repo state (if in a git repo): current branch, `git rev-parse --short HEAD`, `git status --porcelain`, and open PRs if relevant (`gh pr list --author @me` per the resume-notes convention).
 - Any plan file, scratchpad, or codemaps in play — reference by path.
 
@@ -38,10 +38,9 @@ Build the handoff content using the template below. Fill in only the sections th
 ## Where we are
 <2–4 sentences: what's done, what's in progress right now, what's blocked.>
 
-## Running subagents (still alive after /clear)
-- <agent type> `<task-id>` — <what it's doing> — output lands in <file / branch / PR>. It keeps running; its notification arrives in the fresh session, and `SendMessage` to `<task-id>` reaches it.
+## Running subagents
+- `<task-id>` <agent type> — <what it's doing> — output lands in <file / branch / PR>
 <omit section if none>
-<record the id, what each was DOING, and WHERE its result lands. In Claude Code they survive /clear; in a harness where they don't (a new OMP/Codex session), the output location is how the next session picks up their work.>
 
 ## Key files & locations
 - `path/to/file.ts:NN` — <why it matters>
